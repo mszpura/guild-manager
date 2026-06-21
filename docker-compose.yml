@@ -1,0 +1,19 @@
+# Lokalna baza PostgreSQL do developmentu.
+# Uruchom: docker compose up -d
+# DATABASE_URL (w .env): postgresql://user:password@localhost:5432/guild?schema=public
+services:
+  db:
+    image: postgres:16
+    container_name: guild-pg
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: guild
+    ports:
+      - "5432:5432"
+    volumes:
+      - guild-pg-data:/var/lib/postgresql/data
+
+volumes:
+  guild-pg-data:

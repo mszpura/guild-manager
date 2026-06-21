@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Guild Manager — system zarządzania stowarzyszeniem
 
-## Getting Started
+Webowa aplikacja do zarządzania stowarzyszeniem: członkowie, role, protokoły ze
+spotkań i uchwały. Multi-tenant — każdy użytkownik może założyć własne
+stowarzyszenie, dodawać członków i nadawać im role.
 
-First, run the development server:
+## Stack
+
+- **Next.js 16** (App Router) + TypeScript + React 19
+- **Tailwind CSS v4** + shadcn/ui
+- **PostgreSQL** + **Prisma 7** (z driver adapterem `@prisma/adapter-pg`)
+- **Auth.js v5** — logowanie przez Google oraz magic link (e-mail)
+- **Zod** — walidacja
+
+## Status
+
+Krok 1 (fundament) ukończony: scaffold, model danych z multi-tenancy,
+uwierzytelnianie, tworzenie/przełączanie stowarzyszeń, szkielet UI (pulpit).
+Kolejne kroki: członkowie → spotkania/protokoły → uchwały (z eksportem PDF).
+
+## Uruchomienie lokalne
+
+1. **Zmienne środowiskowe** — skopiuj `.env.example` do `.env` i uzupełnij:
+
+   ```bash
+   cp .env.example .env
+   npx auth secret   # wygeneruje i wpisze AUTH_SECRET
+   ```
+
+   - `DATABASE_URL` — dla lokalnej bazy (poniżej) zostaw domyślne.
+   - `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` — z Google Cloud Console
+     (redirect URI: `http://localhost:3000/api/auth/callback/google`).
+   - `EMAIL_SERVER` / `EMAIL_FROM` — np. darmowy Mailtrap do testów magic linku.
+
+2. **Baza danych** (lokalnie przez Docker):
+
+   ```bash
+   docker compose up -d
+   ```
+
+   Albo użyj darmowej bazy z [Neon](https://neon.tech) i wklej jej connection
+   string do `DATABASE_URL`.
+
+3. **Migracje i klient Prisma**:
+
+   ```bash
+   npx prisma migrate dev   # tworzy tabele
+   ```
+
+4. **Serwer deweloperski**:
+
+   ```bash
+   npm run dev
+   ```
+
+   Otwórz http://localhost:3000 — zostaniesz przekierowany do logowania.
+   Po zalogowaniu utworzysz pierwsze stowarzyszenie.
+
+## Przydatne komendy
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run dev          # serwer deweloperski
+npm run build        # build produkcyjny (typecheck)
+npm run lint         # ESLint
+npx prisma studio    # przeglądarka bazy danych
+npx prisma migrate dev --name <nazwa>   # nowa migracja po zmianie schematu
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Struktura
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+prisma/schema.prisma          model danych (User/Auth.js + Organization/Membership/Role)
+src/lib/prisma.ts             singleton Prisma Client (adapter pg)
+src/lib/auth.ts               konfiguracja Auth.js (Google + magic link)
+src/lib/tenant.ts             getActiveOrg, requireMembership (dostęp tenant-scoped)
+src/lib/actions/              server actions (organization, auth)
+src/app/(app)/                trasy chronione (layout = bramka sesji + sidebar)
+src/app/organizations/new/    tworzenie stowarzyszenia
+src/app/(auth)/signin/        logowanie
+```
