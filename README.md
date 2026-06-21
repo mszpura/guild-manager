@@ -66,6 +66,39 @@ npx prisma studio    # przeglądarka bazy danych
 npx prisma migrate dev --name <nazwa>   # nowa migracja po zmianie schematu
 ```
 
+## Wdrożenie na DigitalOcean (App Platform + Managed PostgreSQL)
+
+Konfiguracja jest w [`.do/app.yaml`](.do/app.yaml) — definiuje usługę web
+(Next.js), job uruchamiający migracje przed każdym wdrożeniem oraz zarządzaną
+bazę PostgreSQL. `DATABASE_URL` i `AUTH_URL` podpinają się automatycznie.
+
+1. **Push do GitHub** (App Platform deployuje z repo `mszpura/guild-manager`,
+   gałąź `main`, automatycznie przy każdym push).
+
+2. **Utwórz aplikację** ze specyfikacji:
+
+   ```bash
+   doctl apps create --spec .do/app.yaml
+   ```
+
+   lub w panelu: **Apps → Create → Import from App Spec**.
+
+3. **Uzupełnij sekrety** w panelu (Settings → Env Vars), zaznaczone w spec jako
+   `USTAW_W_PANELU`:
+   - `AUTH_SECRET` — `npx auth secret` lub `openssl rand -base64 32`
+   - `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`
+   - `EMAIL_SERVER`, `EMAIL_FROM`
+
+4. **Google OAuth** — w Google Cloud Console dodaj produkcyjny redirect URI:
+   `https://<twoja-domena>.ondigitalocean.app/api/auth/callback/google`.
+
+Migracje (`prisma migrate deploy`) wykonują się automatycznie jako job
+PRE_DEPLOY. Klient Prisma regeneruje się na buildzie przez `postinstall`
+(katalog `src/generated/prisma` jest w `.gitignore`).
+
+> Lokalny dev na Dockerze i produkcja na DO to osobne środowiska korzystające
+> z tych samych migracji w `prisma/migrations/`.
+
 ## Struktura
 
 ```

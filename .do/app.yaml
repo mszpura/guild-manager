@@ -1,0 +1,76 @@
+# DigitalOcean App Platform — specyfikacja aplikacji (Opcja A).
+#
+# Import:
+#   doctl apps create --spec .do/app.yaml
+#   (albo w panelu: Apps → Create → "Import from App Spec")
+#
+# Po pierwszym wdrożeniu uzupełnij SEKRETY (AUTH_SECRET, AUTH_GOOGLE_*,
+# EMAIL_*) w panelu App Platform → Settings → App-Level/Component Env Vars.
+# DATABASE_URL i AUTH_URL są podpinane automatycznie (zmienne ${...} poniżej).
+
+name: guild-manager
+region: fra # Frankfurt — najbliżej Polski
+
+services:
+  - name: web
+    github:
+      repo: mszpura/guild-manager
+      branch: main
+      deploy_on_push: true
+    environment_slug: node-js
+    build_command: npm run build # postinstall (prisma generate) odpala się przy npm install
+    run_command: npm start
+    http_port: 8080 # App Platform ustawia PORT=8080; next start to respektuje
+    instance_count: 1
+    instance_size_slug: apps-s-1vcpu-0.5gb # Basic; można zmienić w panelu
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${guild-db.DATABASE_URL} # podpięte z bazy poniżej
+      - key: AUTH_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${APP_URL} # publiczny URL aplikacji (https://...ondigitalocean.app)
+      - key: AUTH_TRUST_HOST
+        scope: RUN_AND_BUILD_TIME
+        value: "true" # wymagane przez Auth.js poza Vercel (za proxy App Platform)
+      - key: AUTH_SECRET
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: USTAW_W_PANELU # `npx auth secret` lub `openssl rand -base64 32`
+      - key: AUTH_GOOGLE_ID
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: USTAW_W_PANELU
+      - key: AUTH_GOOGLE_SECRET
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: USTAW_W_PANELU
+      - key: EMAIL_SERVER
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+        value: USTAW_W_PANELU # smtp://user:pass@host:port
+      - key: EMAIL_FROM
+        scope: RUN_AND_BUILD_TIME
+        value: "Stowarzyszenie <no-reply@twoja-domena>"
+
+jobs:
+  # Migracje uruchamiane przed każdym wdrożeniem nowej wersji.
+  - name: migrate
+    kind: PRE_DEPLOY
+    github:
+      repo: mszpura/guild-manager
+      branch: main
+    environment_slug: node-js
+    build_command: echo "job migracyjny — bez budowania frontendu"
+    run_command: npm run db:deploy # prisma migrate deploy
+    instance_size_slug: apps-s-1vcpu-0.5gb
+    envs:
+      - key: DATABASE_URL
+        scope: RUN_AND_BUILD_TIME
+        value: ${guild-db.DATABASE_URL}
+
+databases:
+  - name: guild-db
+    engine: PG
+    version: "16"
+    production: false # baza deweloperska (tańsza, bez HA). Na true = klaster zarządzany.
