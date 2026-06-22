@@ -86,9 +86,14 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships Membership[]
-  // Kolejne kroki dodadzą tu: members (Member), meetings, resolutions —
-  // każdy z polem organizationId + @@index([organizationId]).
+  // Link zapraszający — jeden na stowarzyszenie (regenerowalny, włącz/wyłącz).
+  inviteToken   String?  @unique // token w URL-u /join/<token>
+  inviteEnabled Boolean  @default(true)
+
+  memberships  Membership[]
+  members      Member[]
+  applications MembershipApplication[]
+  // Kolejne kroki dodadzą tu: meetings, resolutions — każdy z organizationId.
 }
 
 // Łączy konto użytkownika (User) ze stowarzyszeniem i nadaje rolę.
@@ -106,4 +111,47 @@ model Membership {
   @@unique([userId, organizationId]) // jeden użytkownik = jedno członkostwo na stowarzyszenie
   @@index([organizationId])
   @@index([userId])
+}
+
+// ─── Domena: członkowie stowarzyszenia i zgłoszenia ─────────────────────────
+
+enum ApplicationStatus {
+  PENDING // oczekuje na decyzję
+  APPROVED // zatwierdzone
+  REJECTED // odrzucone
+}
+
+// Zgłoszenie z publicznego formularza (link zapraszający). Nie jest jeszcze członkiem.
+model MembershipApplication {
+  id             String       @id @default(cuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  firstName String
+  lastName  String
+  email     String
+  birthDate DateTime
+
+  status       ApplicationStatus @default(PENDING)
+  createdAt    DateTime          @default(now())
+  reviewedAt   DateTime?
+  reviewedById String? // userId administratora, który rozpatrzył (pole audytowe)
+
+  @@index([organizationId, status])
+}
+
+// Zatwierdzony członek stowarzyszenia (ewidencja). Osoba, niekoniecznie z kontem (User).
+model Member {
+  id             String       @id @default(cuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  firstName String
+  lastName  String
+  email     String
+  birthDate DateTime
+  joinedAt  DateTime @default(now())
+
+  @@unique([organizationId, email]) // jeden e-mail = jeden członek danego stowarzyszenia
+  @@index([organizationId])
 }

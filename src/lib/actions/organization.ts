@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createOrganizationSchema, slugify } from "@/lib/validations";
+import { generateInviteToken } from "@/lib/tokens";
+import { requireMembership } from "@/lib/tenant";
 import { Role } from "@/generated/prisma/client";
 
 export type FormState = { error?: string } | undefined;
@@ -36,7 +38,7 @@ export async function createOrganization(
 
   await prisma.$transaction(async (tx) => {
     const org = await tx.organization.create({
-      data: { name: parsed.data.name, slug },
+      data: { name: parsed.data.name, slug, inviteToken: generateInviteToken() },
     });
     await tx.membership.create({
       data: {
@@ -75,4 +77,27 @@ export async function setActiveOrganization(organizationId: string) {
   });
 
   revalidatePath("/", "layout");
+}
+
+// Generuje nowy token linku zapraszającego (unieważnia poprzedni). OWNER/BOARD.
+export async function regenerateInviteLink(organizationId: string) {
+  await requireMembership(organizationId, [Role.OWNER, Role.BOARD]);
+  await prisma.organization.update({
+    where: { id: organizationId },
+    data: { inviteToken: generateInviteToken() },
+  });
+  revalidatePath("/members");
+}
+
+// Włącza/wyłącza link zapraszający. OWNER/BOARD.
+export async function setInviteEnabled(
+  organizationId: string,
+  enabled: boolean,
+) {
+  await requireMembership(organizationId, [Role.OWNER, Role.BOARD]);
+  await prisma.organization.update({
+    where: { id: organizationId },
+    data: { inviteEnabled: enabled },
+  });
+  revalidatePath("/members");
 }

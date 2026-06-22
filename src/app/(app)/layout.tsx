@@ -1,18 +1,19 @@
 import { redirect } from "next/navigation";
 import { getActiveOrg, getSession } from "@/lib/tenant";
+import { prisma } from "@/lib/prisma";
+import { ApplicationStatus, Role } from "@/generated/prisma/client";
 import { OrgSwitcher } from "@/components/org-switcher";
 import { UserMenu } from "@/components/user-menu";
-import { Users, FileText, Gavel, LayoutDashboard } from "lucide-react";
+import {
+  Users,
+  FileText,
+  Gavel,
+  LayoutDashboard,
+  Inbox,
+  type LucideIcon,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-
-// Pozycje nawigacji. Aktywne dziś tylko "Pulpit"; reszta dochodzi w kolejnych krokach.
-const NAV = [
-  { href: "/dashboard", label: "Pulpit", icon: LayoutDashboard, ready: true },
-  { href: "#", label: "Członkowie", icon: Users, ready: false },
-  { href: "#", label: "Spotkania", icon: FileText, ready: false },
-  { href: "#", label: "Uchwały", icon: Gavel, ready: false },
-];
 
 export default async function AppLayout({
   children,
@@ -26,6 +27,42 @@ export default async function AppLayout({
   const session = await getSession();
   const { memberships, active } = data;
 
+  const isAdmin =
+    active.role === Role.OWNER || active.role === Role.BOARD;
+  const pendingCount = isAdmin
+    ? await prisma.membershipApplication.count({
+        where: {
+          organizationId: active.organizationId,
+          status: ApplicationStatus.PENDING,
+        },
+      })
+    : 0;
+
+  // Pozycje nawigacji. Sekcje administracyjne tylko dla OWNER/BOARD.
+  const nav: {
+    href: string;
+    label: string;
+    icon: LucideIcon;
+    ready: boolean;
+    count?: number;
+  }[] = [
+    { href: "/dashboard", label: "Pulpit", icon: LayoutDashboard, ready: true },
+    ...(isAdmin
+      ? [
+          { href: "/members", label: "Członkowie", icon: Users, ready: true },
+          {
+            href: "/applications",
+            label: "Zgłoszenia",
+            icon: Inbox,
+            ready: true,
+            count: pendingCount,
+          },
+        ]
+      : []),
+    { href: "#", label: "Spotkania", icon: FileText, ready: false },
+    { href: "#", label: "Uchwały", icon: Gavel, ready: false },
+  ];
+
   return (
     <div className="flex min-h-svh">
       <aside className="flex w-64 shrink-0 flex-col border-r bg-muted/20">
@@ -36,7 +73,7 @@ export default async function AppLayout({
           />
         </div>
         <nav className="flex-1 space-y-1 p-3">
-          {NAV.map((item) => (
+          {nav.map((item) => (
             <Link
               key={item.label}
               href={item.ready ? item.href : "#"}
@@ -55,6 +92,8 @@ export default async function AppLayout({
                 <Badge variant="secondary" className="text-[10px]">
                   wkrótce
                 </Badge>
+              ) : item.count ? (
+                <Badge className="text-[10px]">{item.count}</Badge>
               ) : null}
             </Link>
           ))}

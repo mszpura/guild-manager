@@ -11,6 +11,35 @@ export const createOrganizationSchema = z.object({
 
 export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;
 
+// Walidacja publicznego formularza zgłoszeniowego (link zapraszający).
+// Dane pochodzą z publicznego źródła — walidujemy je rygorystycznie po stronie serwera.
+export const applicationSchema = z.object({
+  firstName: z
+    .string()
+    .trim()
+    .min(2, "Imię musi mieć co najmniej 2 znaki.")
+    .max(100, "Imię jest za długie."),
+  lastName: z
+    .string()
+    .trim()
+    .min(2, "Nazwisko musi mieć co najmniej 2 znaki.")
+    .max(100, "Nazwisko jest za długie."),
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .email("Podaj poprawny adres e-mail."),
+  birthDate: z.coerce
+    .date({ message: "Podaj poprawną datę urodzenia." })
+    .refine((d) => d <= new Date(), "Data urodzenia nie może być z przyszłości.")
+    .refine(
+      (d) => d >= new Date("1900-01-01"),
+      "Podaj realną datę urodzenia.",
+    ),
+});
+
+export type ApplicationInput = z.infer<typeof applicationSchema>;
+
 // Tworzy URL-bezpieczny slug z nazwy stowarzyszenia (obsługuje polskie znaki).
 export function slugify(input: string): string {
   return input

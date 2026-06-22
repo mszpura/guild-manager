@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getActiveOrg } from "@/lib/tenant";
 import { ROLE_LABELS } from "@/lib/roles";
+import { Role } from "@/generated/prisma/client";
 import {
   Card,
   CardDescription,
@@ -8,25 +10,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, FileText, Gavel } from "lucide-react";
+import { Users, Inbox, FileText, Gavel, type LucideIcon } from "lucide-react";
 
-const TILES = [
-  {
-    title: "Członkowie",
-    description: "Lista członków, dane, składki, statusy.",
-    icon: Users,
-  },
-  {
-    title: "Spotkania",
-    description: "Terminy spotkań i protokoły (eksport PDF).",
-    icon: FileText,
-  },
-  {
-    title: "Uchwały",
-    description: "Numerowane uchwały z eksportem do PDF.",
-    icon: Gavel,
-  },
-];
+type Tile = {
+  title: string;
+  description: string;
+  icon: LucideIcon;
+  href?: string; // ustawione → kafelek aktywny (link); brak → „wkrótce"
+};
 
 export default async function DashboardPage() {
   // Layout (app) pełni rolę bramki, ale page i layout renderują się
@@ -35,6 +26,37 @@ export default async function DashboardPage() {
   if (!data) redirect("/signin");
   if (!data.active) redirect("/organizations/new");
   const active = data.active;
+
+  const isAdmin = active.role === Role.OWNER || active.role === Role.BOARD;
+
+  const tiles: Tile[] = [
+    ...(isAdmin
+      ? [
+          {
+            title: "Członkowie",
+            description: "Lista członków oraz link zapraszający.",
+            icon: Users,
+            href: "/members",
+          },
+          {
+            title: "Zgłoszenia",
+            description: "Rozpatruj zgłoszenia nowych członków.",
+            icon: Inbox,
+            href: "/applications",
+          },
+        ]
+      : []),
+    {
+      title: "Spotkania",
+      description: "Terminy spotkań i protokoły (eksport PDF).",
+      icon: FileText,
+    },
+    {
+      title: "Uchwały",
+      description: "Numerowane uchwały z eksportem do PDF.",
+      icon: Gavel,
+    },
+  ];
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
@@ -46,20 +68,34 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {TILES.map((tile) => (
-          <Card key={tile.title} className="relative opacity-80">
+        {tiles.map((tile) => {
+          const inner = (
             <CardHeader>
               <tile.icon className="size-6 text-muted-foreground" />
               <CardTitle className="mt-2 flex items-center gap-2">
                 {tile.title}
-                <Badge variant="secondary" className="text-[10px]">
-                  wkrótce
-                </Badge>
+                {!tile.href ? (
+                  <Badge variant="secondary" className="text-[10px]">
+                    wkrótce
+                  </Badge>
+                ) : null}
               </CardTitle>
               <CardDescription>{tile.description}</CardDescription>
             </CardHeader>
-          </Card>
-        ))}
+          );
+
+          return tile.href ? (
+            <Link key={tile.title} href={tile.href}>
+              <Card className="h-full transition-colors hover:border-primary/50 hover:bg-accent/40">
+                {inner}
+              </Card>
+            </Link>
+          ) : (
+            <Card key={tile.title} className="h-full opacity-80">
+              {inner}
+            </Card>
+          );
+        })}
       </div>
     </div>
   );
