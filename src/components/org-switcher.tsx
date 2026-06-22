@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import { setActiveOrganization } from "@/lib/actions/organization";
 import { ROLE_LABELS } from "@/lib/roles";
-import type { MembershipWithOrg } from "@/lib/tenant";
+import type { MemberWithOrg } from "@/lib/tenant";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,15 +17,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 export function OrgSwitcher({
-  memberships,
+  members,
   activeId,
 }: {
-  memberships: MembershipWithOrg[];
+  members: MemberWithOrg[];
   activeId: string;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const active = memberships.find((m) => m.organizationId === activeId);
+  const active = members.find((m) => m.organizationId === activeId);
 
   function switchTo(organizationId: string) {
     if (organizationId === activeId) return;
@@ -58,7 +58,7 @@ export function OrgSwitcher({
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-(--radix-dropdown-menu-trigger-width)">
         <DropdownMenuLabel>Twoje stowarzyszenia</DropdownMenuLabel>
-        {memberships.map((m) => (
+        {members.map((m) => (
           <DropdownMenuItem
             key={m.organizationId}
             onSelect={() => switchTo(m.organizationId)}

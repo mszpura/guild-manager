@@ -1,9 +1,11 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { getActiveOrg, requireMembership } from "@/lib/tenant";
+import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { Role } from "@/generated/prisma/client";
+import { ROLE_LABELS } from "@/lib/roles";
 import { InviteLinkCard } from "@/components/invite-link-card";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -20,7 +22,10 @@ export default async function MembersPage() {
   if (!data) redirect("/signin");
   if (!data.active) redirect("/organizations/new");
   const orgId = data.active.organizationId;
-  await requireMembership(orgId, [Role.OWNER, Role.BOARD]);
+
+  // Dostęp dla każdej roli; rola steruje zakresem widocznych danych.
+  const me = await requireMember(orgId);
+  const isAdmin = me.role === Role.OWNER || me.role === Role.BOARD;
 
   const [org, members] = await Promise.all([
     prisma.organization.findUnique({
@@ -29,58 +34,68 @@ export default async function MembersPage() {
     }),
     prisma.member.findMany({
       where: { organizationId: orgId },
-      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+      // Właściciel/zarząd na górze (kolejność enuma OWNER→BOARD→MEMBER), potem nazwisko.
+      orderBy: [{ role: "asc" }, { lastName: "asc" }, { firstName: "asc" }],
     }),
   ]);
 
-  const h = await headers();
-  const host = h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "http";
   const inviteUrl = org?.inviteToken
-    ? `${proto}://${host}/join/${org.inviteToken}`
+    ? await buildInviteUrl(org.inviteToken)
     : "";
 
   return (
     <div className="mx-auto max-w-4xl space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">Członkowie</h1>
-        <p className="text-muted-foreground">
-          {members.length === 0
-            ? "Brak członków — roześlij link zapraszający poniżej."
-            : `Liczba członków: ${members.length}`}
-        </p>
+        <p className="text-muted-foreground">Liczba członków: {members.length}</p>
       </div>
 
-      <InviteLinkCard
-        organizationId={orgId}
-        inviteUrl={inviteUrl}
-        enabled={org?.inviteEnabled ?? false}
-      />
-
-      {members.length > 0 ? (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Nazwisko</TableHead>
-              <TableHead>Imię</TableHead>
-              <TableHead>E-mail</TableHead>
-              <TableHead>Data urodzenia</TableHead>
-              <TableHead>Dołączył(a)</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {members.map((m) => (
-              <TableRow key={m.id}>
-                <TableCell className="font-medium">{m.lastName}</TableCell>
-                <TableCell>{m.firstName}</TableCell>
-                <TableCell>{m.email}</TableCell>
-                <TableCell>{dateFmt.format(m.birthDate)}</TableCell>
-                <TableCell>{dateFmt.format(m.joinedAt)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+      {isAdmin ? (
+        <InviteLinkCard
+          organizationId={orgId}
+          inviteUrl={inviteUrl}
+          enabled={org?.inviteEnabled ?? false}
+        />
       ) : null}
+
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Nazwisko</TableHead>
+            <TableHead>Imię</TableHead>
+            <TableHead>Rola</TableHead>
+            {isAdmin ? <TableHead>E-mail</TableHead> : null}
+            {isAdmin ? <TableHead>Data urodzenia</TableHead> : null}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {members.map((m) => (
+            <TableRow key={m.id}>
+              <TableCell className="font-medium">{m.lastName ?? "—"}</TableCell>
+              <TableCell>{m.firstName}</TableCell>
+              <TableCell>
+                <Badge variant={m.role === Role.MEMBER ? "secondary" : "default"}>
+                  {ROLE_LABELS[m.role]}
+                </Badge>
+              </TableCell>
+              {isAdmin ? <TableCell>{m.email}</TableCell> : null}
+              {isAdmin ? (
+                <TableCell>
+                  {m.birthDate ? dateFmt.format(m.birthDate) : "—"}
+                </TableCell>
+              ) : null}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
   );
+}
+
+// Buduje absolutny URL zaproszenia z nagłówków żądania (dev i produkcja).
+async function buildInviteUrl(token: string) {
+  const h = await headers();
+  const host = h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  return `${proto}://${host}/join/${token}`;
 }

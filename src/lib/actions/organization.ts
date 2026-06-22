@@ -6,10 +6,22 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createOrganizationSchema, slugify } from "@/lib/validations";
 import { generateInviteToken } from "@/lib/tokens";
-import { requireMembership } from "@/lib/tenant";
+import { requireMember } from "@/lib/tenant";
 import { Role } from "@/generated/prisma/client";
 
 export type FormState = { error?: string } | undefined;
+
+// Rozbija pełną nazwę użytkownika na imię + (opcjonalne) nazwisko.
+// Bez nazwy → imię z części adresu e-mail przed @.
+function splitName(name: string | null | undefined, email: string) {
+  const full = (name ?? "").trim();
+  if (!full) return { firstName: email.split("@")[0], lastName: null };
+  const parts = full.split(/\s+/);
+  return {
+    firstName: parts[0],
+    lastName: parts.length > 1 ? parts.slice(1).join(" ") : null,
+  };
+}
 
 // Tworzy nowe stowarzyszenie, czyni twórcę właścicielem (OWNER) i ustawia je
 // jako aktywne. Wywoływane przez formularz przez useActionState.
@@ -19,6 +31,13 @@ export async function createOrganization(
 ): Promise<FormState> {
   const session = await auth();
   if (!session?.user) redirect("/signin");
+
+  const email = session.user.email?.toLowerCase();
+  if (!email) {
+    return {
+      error: "Twoje konto nie ma adresu e-mail — nie można utworzyć stowarzyszenia.",
+    };
+  }
 
   const parsed = createOrganizationSchema.safeParse({
     name: formData.get("name"),
@@ -36,15 +55,20 @@ export async function createOrganization(
     slug = `${base}-${suffix}`;
   }
 
+  const { firstName, lastName } = splitName(session.user.name, email);
+
   await prisma.$transaction(async (tx) => {
     const org = await tx.organization.create({
       data: { name: parsed.data.name, slug, inviteToken: generateInviteToken() },
     });
-    await tx.membership.create({
+    // Twórca staje się członkiem z rolą OWNER (pojawia się na liście członków).
+    await tx.member.create({
       data: {
-        userId: session.user.id,
         organizationId: org.id,
         role: Role.OWNER,
+        email,
+        firstName,
+        lastName,
       },
     });
     await tx.user.update({
@@ -57,17 +81,19 @@ export async function createOrganization(
   redirect("/dashboard");
 }
 
-// Przełącza aktywne stowarzyszenie po weryfikacji członkostwa.
+// Przełącza aktywne stowarzyszenie po weryfikacji przynależności (po e-mailu).
 export async function setActiveOrganization(organizationId: string) {
   const session = await auth();
   if (!session?.user) redirect("/signin");
 
-  const membership = await prisma.membership.findUnique({
-    where: {
-      userId_organizationId: { userId: session.user.id, organizationId },
-    },
+  const email = session.user.email?.toLowerCase();
+  if (!email) throw new Error("Brak adresu e-mail w koncie.");
+
+  const member = await prisma.member.findUnique({
+    where: { organizationId_email: { organizationId, email } },
+    select: { id: true },
   });
-  if (!membership) {
+  if (!member) {
     throw new Error("Brak dostępu do tego stowarzyszenia.");
   }
 
@@ -81,7 +107,7 @@ export async function setActiveOrganization(organizationId: string) {
 
 // Generuje nowy token linku zapraszającego (unieważnia poprzedni). OWNER/BOARD.
 export async function regenerateInviteLink(organizationId: string) {
-  await requireMembership(organizationId, [Role.OWNER, Role.BOARD]);
+  await requireMember(organizationId, [Role.OWNER, Role.BOARD]);
   await prisma.organization.update({
     where: { id: organizationId },
     data: { inviteToken: generateInviteToken() },
@@ -94,7 +120,7 @@ export async function setInviteEnabled(
   organizationId: string,
   enabled: boolean,
 ) {
-  await requireMembership(organizationId, [Role.OWNER, Role.BOARD]);
+  await requireMember(organizationId, [Role.OWNER, Role.BOARD]);
   await prisma.organization.update({
     where: { id: organizationId },
     data: { inviteEnabled: enabled },

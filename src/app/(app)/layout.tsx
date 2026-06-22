@@ -25,7 +25,7 @@ export default async function AppLayout({
   if (!data.active) redirect("/organizations/new"); // brak stowarzyszenia
 
   const session = await getSession();
-  const { memberships, active } = data;
+  const { members, active } = data;
 
   const isAdmin =
     active.role === Role.OWNER || active.role === Role.BOARD;
@@ -38,7 +38,7 @@ export default async function AppLayout({
       })
     : 0;
 
-  // Pozycje nawigacji. Sekcje administracyjne tylko dla OWNER/BOARD.
+  // Pozycje nawigacji. „Zgłoszenia" tylko dla OWNER/BOARD; „Członkowie" dla każdej roli.
   const nav: {
     href: string;
     label: string;
@@ -47,9 +47,9 @@ export default async function AppLayout({
     count?: number;
   }[] = [
     { href: "/dashboard", label: "Pulpit", icon: LayoutDashboard, ready: true },
+    { href: "/members", label: "Członkowie", icon: Users, ready: true },
     ...(isAdmin
       ? [
-          { href: "/members", label: "Członkowie", icon: Users, ready: true },
           {
             href: "/applications",
             label: "Zgłoszenia",
@@ -67,10 +67,7 @@ export default async function AppLayout({
     <div className="flex min-h-svh">
       <aside className="flex w-64 shrink-0 flex-col border-r bg-muted/20">
         <div className="border-b p-3">
-          <OrgSwitcher
-            memberships={memberships}
-            activeId={active.organizationId}
-          />
+          <OrgSwitcher members={members} activeId={active.organizationId} />
         </div>
         <nav className="flex-1 space-y-1 p-3">
           {nav.map((item) => (

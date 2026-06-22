@@ -30,14 +30,14 @@ export default async function DashboardPage() {
   const isAdmin = active.role === Role.OWNER || active.role === Role.BOARD;
 
   const tiles: Tile[] = [
+    {
+      title: "Członkowie",
+      description: "Lista członków stowarzyszenia.",
+      icon: Users,
+      href: "/members",
+    },
     ...(isAdmin
       ? [
-          {
-            title: "Członkowie",
-            description: "Lista członków oraz link zapraszający.",
-            icon: Users,
-            href: "/members",
-          },
           {
             title: "Zgłoszenia",
             description: "Rozpatruj zgłoszenia nowych członków.",

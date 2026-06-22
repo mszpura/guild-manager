@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
-import { requireMembership } from "@/lib/tenant";
+import { requireMember } from "@/lib/tenant";
 import { applicationSchema } from "@/lib/validations";
 import { sendWelcomeEmail } from "@/lib/email";
 import { ApplicationStatus, Role } from "@/generated/prisma/client";
@@ -77,7 +77,7 @@ export async function approveApplication(applicationId: string) {
   });
   if (!application) throw new Error("Zgłoszenie nie istnieje.");
 
-  await requireMembership(application.organizationId, [Role.OWNER, Role.BOARD]);
+  await requireMember(application.organizationId, [Role.OWNER, Role.BOARD]);
 
   if (application.status !== ApplicationStatus.PENDING) {
     throw new Error("To zgłoszenie zostało już rozpatrzone.");
@@ -130,7 +130,7 @@ export async function rejectApplication(applicationId: string) {
   });
   if (!application) throw new Error("Zgłoszenie nie istnieje.");
 
-  await requireMembership(application.organizationId, [Role.OWNER, Role.BOARD]);
+  await requireMember(application.organizationId, [Role.OWNER, Role.BOARD]);
 
   if (application.status !== ApplicationStatus.PENDING) {
     throw new Error("To zgłoszenie zostało już rozpatrzone.");

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getActiveOrg, requireMembership } from "@/lib/tenant";
+import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { ApplicationStatus, Role } from "@/generated/prisma/client";
 import { ApplicationActions } from "@/components/application-actions";
@@ -29,7 +29,7 @@ export default async function ApplicationsPage() {
   if (!data) redirect("/signin");
   if (!data.active) redirect("/organizations/new");
   const orgId = data.active.organizationId;
-  await requireMembership(orgId, [Role.OWNER, Role.BOARD]);
+  await requireMember(orgId, [Role.OWNER, Role.BOARD]);
 
   const applications = await prisma.membershipApplication.findMany({
     where: { organizationId: orgId },

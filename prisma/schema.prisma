@@ -23,8 +23,7 @@ model User {
   accounts Account[]
   sessions Session[]
 
-  // Domena
-  memberships          Membership[]
+  // Domena: dostęp do stowarzyszeń wynika z dopasowania e-maila do wpisów Member.
   // Ostatnio wybrane (aktywne) stowarzyszenie użytkownika.
   activeOrganizationId String?
 
@@ -87,30 +86,12 @@ model Organization {
   updatedAt DateTime @updatedAt
 
   // Link zapraszający — jeden na stowarzyszenie (regenerowalny, włącz/wyłącz).
-  inviteToken   String?  @unique // token w URL-u /join/<token>
-  inviteEnabled Boolean  @default(true)
+  inviteToken   String? @unique // token w URL-u /join/<token>
+  inviteEnabled Boolean @default(true)
 
-  memberships  Membership[]
   members      Member[]
   applications MembershipApplication[]
   // Kolejne kroki dodadzą tu: meetings, resolutions — każdy z organizationId.
-}
-
-// Łączy konto użytkownika (User) ze stowarzyszeniem i nadaje rolę.
-model Membership {
-  id   String @id @default(cuid())
-  role Role   @default(MEMBER)
-
-  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId         String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  organizationId String
-
-  createdAt DateTime @default(now())
-
-  @@unique([userId, organizationId]) // jeden użytkownik = jedno członkostwo na stowarzyszenie
-  @@index([organizationId])
-  @@index([userId])
 }
 
 // ─── Domena: członkowie stowarzyszenia i zgłoszenia ─────────────────────────
@@ -140,17 +121,19 @@ model MembershipApplication {
   @@index([organizationId, status])
 }
 
-// Zatwierdzony członek stowarzyszenia (ewidencja). Osoba, niekoniecznie z kontem (User).
+// Członek stowarzyszenia (ewidencja). Dostęp do panelu = dopasowanie e-maila
+// zalogowanego użytkownika do wpisu Member. Rola steruje uprawnieniami.
 model Member {
   id             String       @id @default(cuid())
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   organizationId String
 
+  role      Role      @default(MEMBER)
   firstName String
-  lastName  String
+  lastName  String? // opcjonalne (np. jednoczłonowa nazwa założyciela)
   email     String
-  birthDate DateTime
-  joinedAt  DateTime @default(now())
+  birthDate DateTime? // opcjonalne (założyciel nie wypełniał formularza)
+  joinedAt  DateTime  @default(now())
 
   @@unique([organizationId, email]) // jeden e-mail = jeden członek danego stowarzyszenia
   @@index([organizationId])
