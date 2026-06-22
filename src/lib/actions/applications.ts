@@ -1,13 +1,20 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/tenant";
 import { applicationSchema } from "@/lib/validations";
-import { sendWelcomeEmail } from "@/lib/email";
-import { ApplicationStatus, Role } from "@/generated/prisma/client";
+import { sendWelcomeEmail, sendPaymentLinkEmail } from "@/lib/email";
+import { getStripe, createCheckoutSession } from "@/lib/stripe";
+import { formatPLN } from "@/lib/money";
+import {
+  ApplicationStatus,
+  PaymentStatus,
+  Role,
+} from "@/generated/prisma/client";
 
 export type ApplicationFormState =
   | { ok?: boolean; error?: string }
@@ -35,9 +42,15 @@ export async function submitApplication(
     where: { inviteToken: token, inviteEnabled: true },
     select: {
       id: true,
+      name: true,
+      membershipPaid: true,
       applicationFields: {
         orderBy: { order: "asc" },
         select: { id: true, label: true, required: true },
+      },
+      paymentTiers: {
+        orderBy: { order: "asc" },
+        select: { id: true, label: true, amount: true },
       },
     },
   });
@@ -74,7 +87,26 @@ export async function submitApplication(
     return { error: "Zgłoszenie z tym adresem e-mail już oczekuje na rozpatrzenie." };
   }
 
-  await prisma.membershipApplication.create({
+  // Czy zgłoszenie wymaga płatności (płatne członkostwo + zdefiniowane progi).
+  const paid = org.membershipPaid && org.paymentTiers.length > 0;
+
+  let tier: { id: string; label: string; amount: number } | undefined;
+  if (paid) {
+    const tierId = String(formData.get("paymentTier") ?? "");
+    tier = org.paymentTiers.find((t) => t.id === tierId);
+    if (!tier) {
+      return { error: "Wybierz próg składki." };
+    }
+    // Płatność włączona, ale brak skonfigurowanego Stripe → nie blokuj 500-tką.
+    if (!getStripe()) {
+      return {
+        error:
+          "Płatności nie są obecnie skonfigurowane. Skontaktuj się z administratorem.",
+      };
+    }
+  }
+
+  const application = await prisma.membershipApplication.create({
     data: {
       organizationId: org.id,
       firstName,
@@ -82,10 +114,55 @@ export async function submitApplication(
       email,
       birthDate,
       customData: customData.length > 0 ? customData : undefined,
+      paymentStatus: paid ? PaymentStatus.PENDING : PaymentStatus.NOT_REQUIRED,
+      paymentTierLabel: tier?.label,
+      paymentAmount: tier?.amount,
     },
   });
 
-  return { ok: true };
+  // Bezpłatne członkostwo — koniec, zgłoszenie czeka na rozpatrzenie.
+  if (!paid || !tier) {
+    return { ok: true };
+  }
+
+  // Płatne — utwórz sesję Stripe Checkout, zapisz link, wyślij e-mail, przekieruj.
+  const h = await headers();
+  const host = h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  const base = `${proto}://${host}`;
+
+  const session = await createCheckoutSession({
+    amount: tier.amount,
+    label: tier.label,
+    email,
+    applicationId: application.id,
+    successUrl: `${base}/join/${token}/dziekujemy`,
+    cancelUrl: `${base}/join/${token}`,
+  });
+
+  if (!session) {
+    // Nie zostawiaj osieroconego wniosku, jeśli płatności nie da się rozpocząć.
+    await prisma.membershipApplication.delete({ where: { id: application.id } });
+    return {
+      error: "Nie udało się rozpocząć płatności. Spróbuj ponownie później.",
+    };
+  }
+
+  await prisma.membershipApplication.update({
+    where: { id: application.id },
+    data: { stripeSessionId: session.id, paymentUrl: session.url },
+  });
+
+  // E-mail z linkiem do płatności (na wypadek nieukończonej płatności) — miękki błąd.
+  await sendPaymentLinkEmail({
+    to: email,
+    firstName,
+    organizationName: org.name,
+    amountText: formatPLN(tier.amount),
+    paymentUrl: session.url,
+  });
+
+  redirect(session.url);
 }
 
 // Zatwierdza zgłoszenie: tworzy członka, oznacza zgłoszenie, wysyła e-mail powitalny.

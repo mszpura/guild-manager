@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
-import { ApplicationStatus, Role } from "@/generated/prisma/client";
+import { ApplicationStatus, PaymentStatus, Role } from "@/generated/prisma/client";
+import { formatPLN } from "@/lib/money";
 import { ApplicationActions } from "@/components/application-actions";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -40,6 +41,15 @@ const STATUS: Record<
   REJECTED: { label: "Odrzucone", variant: "destructive" },
 };
 
+const PAYMENT: Record<
+  PaymentStatus,
+  { label: string; variant: "default" | "secondary" | "destructive" }
+> = {
+  NOT_REQUIRED: { label: "—", variant: "secondary" },
+  PENDING: { label: "Oczekuje na płatność", variant: "destructive" },
+  PAID: { label: "Opłacone", variant: "default" },
+};
+
 export default async function ApplicationsPage() {
   const data = await getActiveOrg();
   if (!data) redirect("/signin");
@@ -53,7 +63,7 @@ export default async function ApplicationsPage() {
   });
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Zgłoszenia</h1>
         <p className="text-muted-foreground">
@@ -73,6 +83,7 @@ export default async function ApplicationsPage() {
               <TableHead>E-mail</TableHead>
               <TableHead>Data urodzenia</TableHead>
               <TableHead>Dodatkowe dane</TableHead>
+              <TableHead>Składka</TableHead>
               <TableHead>Zgłoszono</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Akcje</TableHead>
@@ -104,6 +115,25 @@ export default async function ApplicationsPage() {
                       </ul>
                     );
                   })()}
+                </TableCell>
+                <TableCell>
+                  {a.paymentStatus === PaymentStatus.NOT_REQUIRED ? (
+                    <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <div className="space-y-1">
+                      {a.paymentTierLabel ? (
+                        <div className="text-sm">
+                          {a.paymentTierLabel}
+                          {a.paymentAmount != null
+                            ? ` · ${formatPLN(a.paymentAmount)}`
+                            : ""}
+                        </div>
+                      ) : null}
+                      <Badge variant={PAYMENT[a.paymentStatus].variant}>
+                        {PAYMENT[a.paymentStatus].label}
+                      </Badge>
+                    </div>
+                  )}
                 </TableCell>
                 <TableCell>{dateFmt.format(a.createdAt)}</TableCell>
                 <TableCell>

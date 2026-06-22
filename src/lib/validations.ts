@@ -50,6 +50,13 @@ export const applicationFieldSchema = z.object({
   required: z.boolean(),
 });
 
+// Walidacja etykiety progu składki (kwotę parsuje parsePLN w akcji).
+export const paymentTierLabelSchema = z
+  .string()
+  .trim()
+  .min(1, "Podaj nazwę progu.")
+  .max(100, "Nazwa progu jest za długa.");
+
 // Tworzy URL-bezpieczny slug z nazwy stowarzyszenia (obsługuje polskie znaki).
 export function slugify(input: string): string {
   return input

@@ -3,6 +3,7 @@ import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { Role } from "@/generated/prisma/client";
 import { ApplicationFieldsManager } from "@/components/application-fields-manager";
+import { PaymentSettings } from "@/components/payment-settings";
 import {
   Card,
   CardContent,
@@ -20,11 +21,22 @@ export default async function SettingsPage() {
   const orgId = data.active.organizationId;
   await requireMember(orgId, [Role.OWNER, Role.BOARD]);
 
-  const fields = await prisma.applicationField.findMany({
-    where: { organizationId: orgId },
-    orderBy: { order: "asc" },
-    select: { id: true, label: true, required: true },
-  });
+  const [fields, org, tiers] = await Promise.all([
+    prisma.applicationField.findMany({
+      where: { organizationId: orgId },
+      orderBy: { order: "asc" },
+      select: { id: true, label: true, required: true },
+    }),
+    prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { membershipPaid: true },
+    }),
+    prisma.paymentTier.findMany({
+      where: { organizationId: orgId },
+      orderBy: { order: "asc" },
+      select: { id: true, label: true, amount: true },
+    }),
+  ]);
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -66,6 +78,23 @@ export default async function SettingsPage() {
             </h3>
             <ApplicationFieldsManager organizationId={orgId} fields={fields} />
           </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Składki członkowskie</CardTitle>
+          <CardDescription>
+            Określ, czy członkostwo jest płatne, i zdefiniuj progi składki, spośród
+            których wybierze osoba wypełniająca formularz.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <PaymentSettings
+            organizationId={orgId}
+            membershipPaid={org?.membershipPaid ?? false}
+            tiers={tiers}
+          />
         </CardContent>
       </Card>
     </div>

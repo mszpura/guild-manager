@@ -44,7 +44,7 @@ export default async function MembersPage() {
     : "";
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8">
+    <div className="mx-auto max-w-6xl space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">Członkowie</h1>
         <p className="text-muted-foreground">Liczba członków: {members.length}</p>
@@ -66,6 +66,7 @@ export default async function MembersPage() {
             <TableHead>Rola</TableHead>
             {isAdmin ? <TableHead>E-mail</TableHead> : null}
             {isAdmin ? <TableHead>Data urodzenia</TableHead> : null}
+            <TableHead>Data dołączenia</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -84,6 +85,7 @@ export default async function MembersPage() {
                   {m.birthDate ? dateFmt.format(m.birthDate) : "—"}
                 </TableCell>
               ) : null}
+              <TableCell>{dateFmt.format(m.joinedAt)}</TableCell>
             </TableRow>
           ))}
         </TableBody>

@@ -6,20 +6,26 @@ import {
   submitApplication,
   type ApplicationFormState,
 } from "@/lib/actions/applications";
+import { formatPLN } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
 
 type CustomField = { id: string; label: string; required: boolean };
+type Tier = { id: string; label: string; amount: number };
 
 export function ApplicationForm({
   token,
   organizationName,
   customFields = [],
+  paid = false,
+  tiers = [],
 }: {
   token: string;
   organizationName: string;
   customFields?: CustomField[];
+  paid?: boolean;
+  tiers?: Tier[];
 }) {
   const action = submitApplication.bind(null, token);
   const [state, formAction, pending] = useActionState<
@@ -73,9 +79,36 @@ export function ApplicationForm({
         </Field>
       ))}
 
+      {paid && tiers.length > 0 ? (
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">Próg składki *</legend>
+          {tiers.map((t, i) => (
+            <label
+              key={t.id}
+              className="flex items-center gap-3 rounded-md border px-3 py-2"
+            >
+              <input
+                type="radio"
+                name="paymentTier"
+                value={t.id}
+                required
+                defaultChecked={i === 0}
+                className="size-4"
+              />
+              <span className="flex-1">{t.label}</span>
+              <span className="font-medium">{formatPLN(t.amount)}</span>
+            </label>
+          ))}
+        </fieldset>
+      ) : null}
+
       {state?.error ? <FieldError>{state.error}</FieldError> : null}
       <Button type="submit" disabled={pending} className="w-full">
-        {pending ? "Wysyłanie…" : "Wyślij zgłoszenie"}
+        {pending
+          ? "Przetwarzanie…"
+          : paid && tiers.length > 0
+            ? "Przejdź do płatności"
+            : "Wyślij zgłoszenie"}
       </Button>
     </form>
   );

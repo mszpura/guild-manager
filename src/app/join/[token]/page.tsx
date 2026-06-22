@@ -21,9 +21,14 @@ export default async function JoinPage({
     where: { inviteToken: token, inviteEnabled: true },
     select: {
       name: true,
+      membershipPaid: true,
       applicationFields: {
         orderBy: { order: "asc" },
         select: { id: true, label: true, required: true },
+      },
+      paymentTiers: {
+        orderBy: { order: "asc" },
+        select: { id: true, label: true, amount: true },
       },
     },
   });
@@ -45,6 +50,8 @@ export default async function JoinPage({
                 token={token}
                 organizationName={org.name}
                 customFields={org.applicationFields}
+                paid={org.membershipPaid}
+                tiers={org.paymentTiers}
               />
             </CardContent>
           </>

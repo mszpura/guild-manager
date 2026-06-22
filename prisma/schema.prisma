@@ -89,9 +89,13 @@ model Organization {
   inviteToken   String? @unique // token w URL-u /join/<token>
   inviteEnabled Boolean @default(true)
 
+  // Składki członkowskie.
+  membershipPaid Boolean @default(false)
+
   members           Member[]
   applications      MembershipApplication[]
   applicationFields ApplicationField[]
+  paymentTiers      PaymentTier[]
   // Kolejne kroki dodadzą tu: meetings, resolutions — każdy z organizationId.
 }
 
@@ -105,6 +109,26 @@ enum ApplicationStatus {
 
 enum FieldType {
   STRING // na razie tylko tekst; enum zostawia miejsce na kolejne typy
+}
+
+enum PaymentStatus {
+  NOT_REQUIRED // członkostwo bezpłatne
+  PENDING // oczekuje na płatność
+  PAID // opłacone
+}
+
+// Próg składki członkowskiej (konfiguracja). Kwota w groszach.
+model PaymentTier {
+  id             String       @id @default(cuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  label     String
+  amount    Int // grosze (np. 10000 = 100,00 zł)
+  order     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([organizationId])
 }
 
 // Definicja dodatkowego pola formularza zgłoszeniowego (konfigurowane przez admina).
@@ -135,6 +159,13 @@ model MembershipApplication {
 
   // Odpowiedzi z pól własnych — migawka [{ label, value }] z chwili zgłoszenia.
   customData Json?
+
+  // Płatność (migawka progu z chwili zgłoszenia + status ze Stripe).
+  paymentStatus    PaymentStatus @default(NOT_REQUIRED)
+  paymentTierLabel String?
+  paymentAmount    Int? // grosze
+  stripeSessionId  String?
+  paymentUrl       String? // link do dokończenia płatności (Stripe Checkout)
 
   status       ApplicationStatus @default(PENDING)
   createdAt    DateTime          @default(now())
