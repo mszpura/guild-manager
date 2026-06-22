@@ -33,10 +33,26 @@ export async function submitApplication(
   // Stowarzyszenie identyfikowane wyłącznie przez aktywny token (tajność = dostęp).
   const org = await prisma.organization.findFirst({
     where: { inviteToken: token, inviteEnabled: true },
-    select: { id: true },
+    select: {
+      id: true,
+      applicationFields: {
+        orderBy: { order: "asc" },
+        select: { id: true, label: true, required: true },
+      },
+    },
   });
   if (!org) {
     return { error: "Ten link zaproszeniowy jest nieaktywny lub nieprawidłowy." };
+  }
+
+  // Walidacja i migawka pól własnych. Dane publiczne → walidujemy po stronie serwera.
+  const customData: { label: string; value: string }[] = [];
+  for (const field of org.applicationFields) {
+    const value = String(formData.get(`custom_${field.id}`) ?? "").trim();
+    if (field.required && !value) {
+      return { error: `Pole „${field.label}" jest wymagane.` };
+    }
+    if (value) customData.push({ label: field.label, value });
   }
 
   const { firstName, lastName, email, birthDate } = parsed.data;
@@ -59,7 +75,14 @@ export async function submitApplication(
   }
 
   await prisma.membershipApplication.create({
-    data: { organizationId: org.id, firstName, lastName, email, birthDate },
+    data: {
+      organizationId: org.id,
+      firstName,
+      lastName,
+      email,
+      birthDate,
+      customData: customData.length > 0 ? customData : undefined,
+    },
   });
 
   return { ok: true };

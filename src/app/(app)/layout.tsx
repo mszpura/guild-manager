@@ -10,6 +10,7 @@ import {
   Gavel,
   LayoutDashboard,
   Inbox,
+  Settings,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +62,9 @@ export default async function AppLayout({
       : []),
     { href: "#", label: "Spotkania", icon: FileText, ready: false },
     { href: "#", label: "Uchwały", icon: Gavel, ready: false },
+    ...(isAdmin
+      ? [{ href: "/settings", label: "Ustawienia", icon: Settings, ready: true }]
+      : []),
   ];
 
   return (

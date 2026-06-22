@@ -10,7 +10,14 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Users, Inbox, FileText, Gavel, type LucideIcon } from "lucide-react";
+import {
+  Users,
+  Inbox,
+  FileText,
+  Gavel,
+  Settings,
+  type LucideIcon,
+} from "lucide-react";
 
 type Tile = {
   title: string;
@@ -43,6 +50,12 @@ export default async function DashboardPage() {
             description: "Rozpatruj zgłoszenia nowych członków.",
             icon: Inbox,
             href: "/applications",
+          },
+          {
+            title: "Ustawienia",
+            description: "Konfiguruj formularz zgłoszeniowy.",
+            icon: Settings,
+            href: "/settings",
           },
         ]
       : []),

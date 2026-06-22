@@ -19,7 +19,13 @@ export default async function JoinPage({
 
   const org = await prisma.organization.findFirst({
     where: { inviteToken: token, inviteEnabled: true },
-    select: { name: true },
+    select: {
+      name: true,
+      applicationFields: {
+        orderBy: { order: "asc" },
+        select: { id: true, label: true, required: true },
+      },
+    },
   });
 
   return (
@@ -35,7 +41,11 @@ export default async function JoinPage({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <ApplicationForm token={token} organizationName={org.name} />
+              <ApplicationForm
+                token={token}
+                organizationName={org.name}
+                customFields={org.applicationFields}
+              />
             </CardContent>
           </>
         ) : (

@@ -40,6 +40,16 @@ export const applicationSchema = z.object({
 
 export type ApplicationInput = z.infer<typeof applicationSchema>;
 
+// Walidacja definicji pola własnego formularza (panel ustawień).
+export const applicationFieldSchema = z.object({
+  label: z
+    .string()
+    .trim()
+    .min(1, "Podaj etykietę pola.")
+    .max(100, "Etykieta jest za długa."),
+  required: z.boolean(),
+});
+
 // Tworzy URL-bezpieczny slug z nazwy stowarzyszenia (obsługuje polskie znaki).
 export function slugify(input: string): string {
   return input

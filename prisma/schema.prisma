@@ -89,8 +89,9 @@ model Organization {
   inviteToken   String? @unique // token w URL-u /join/<token>
   inviteEnabled Boolean @default(true)
 
-  members      Member[]
-  applications MembershipApplication[]
+  members           Member[]
+  applications      MembershipApplication[]
+  applicationFields ApplicationField[]
   // Kolejne kroki dodadzą tu: meetings, resolutions — każdy z organizationId.
 }
 
@@ -100,6 +101,25 @@ enum ApplicationStatus {
   PENDING // oczekuje na decyzję
   APPROVED // zatwierdzone
   REJECTED // odrzucone
+}
+
+enum FieldType {
+  STRING // na razie tylko tekst; enum zostawia miejsce na kolejne typy
+}
+
+// Definicja dodatkowego pola formularza zgłoszeniowego (konfigurowane przez admina).
+model ApplicationField {
+  id             String       @id @default(cuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  label     String
+  type      FieldType @default(STRING)
+  required  Boolean   @default(false)
+  order     Int       @default(0) // kolejność na formularzu
+  createdAt DateTime  @default(now())
+
+  @@index([organizationId])
 }
 
 // Zgłoszenie z publicznego formularza (link zapraszający). Nie jest jeszcze członkiem.
@@ -112,6 +132,9 @@ model MembershipApplication {
   lastName  String
   email     String
   birthDate DateTime
+
+  // Odpowiedzi z pól własnych — migawka [{ label, value }] z chwili zgłoszenia.
+  customData Json?
 
   status       ApplicationStatus @default(PENDING)
   createdAt    DateTime          @default(now())

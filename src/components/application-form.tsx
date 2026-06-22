@@ -10,12 +10,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
 
+type CustomField = { id: string; label: string; required: boolean };
+
 export function ApplicationForm({
   token,
   organizationName,
+  customFields = [],
 }: {
   token: string;
   organizationName: string;
+  customFields?: CustomField[];
 }) {
   const action = submitApplication.bind(null, token);
   const [state, formAction, pending] = useActionState<
@@ -54,6 +58,21 @@ export function ApplicationForm({
         <FieldLabel htmlFor="birthDate">Data urodzenia</FieldLabel>
         <Input id="birthDate" name="birthDate" type="date" required />
       </Field>
+
+      {customFields.map((f) => (
+        <Field key={f.id}>
+          <FieldLabel htmlFor={`custom_${f.id}`}>
+            {f.label}
+            {f.required ? " *" : ""}
+          </FieldLabel>
+          <Input
+            id={`custom_${f.id}`}
+            name={`custom_${f.id}`}
+            required={f.required}
+          />
+        </Field>
+      ))}
+
       {state?.error ? <FieldError>{state.error}</FieldError> : null}
       <Button type="submit" disabled={pending} className="w-full">
         {pending ? "Wysyłanie…" : "Wyślij zgłoszenie"}

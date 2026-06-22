@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/generated/prisma/client";
 import { ApplicationStatus, Role } from "@/generated/prisma/client";
 import { ApplicationActions } from "@/components/application-actions";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +15,21 @@ import {
 } from "@/components/ui/table";
 
 const dateFmt = new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium" });
+
+// customData to migawka [{ label, value }] zapisana w chwili zgłoszenia.
+function parseCustomData(
+  data: Prisma.JsonValue | null,
+): { label: string; value: string }[] {
+  if (!Array.isArray(data)) return [];
+  return data.flatMap((item) =>
+    item &&
+    typeof item === "object" &&
+    "label" in item &&
+    "value" in item
+      ? [{ label: String(item.label), value: String(item.value) }]
+      : [],
+  );
+}
 
 const STATUS: Record<
   ApplicationStatus,
@@ -56,6 +72,7 @@ export default async function ApplicationsPage() {
               <TableHead>Imię i nazwisko</TableHead>
               <TableHead>E-mail</TableHead>
               <TableHead>Data urodzenia</TableHead>
+              <TableHead>Dodatkowe dane</TableHead>
               <TableHead>Zgłoszono</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Akcje</TableHead>
@@ -69,6 +86,25 @@ export default async function ApplicationsPage() {
                 </TableCell>
                 <TableCell>{a.email}</TableCell>
                 <TableCell>{dateFmt.format(a.birthDate)}</TableCell>
+                <TableCell>
+                  {(() => {
+                    const extra = parseCustomData(a.customData);
+                    if (extra.length === 0)
+                      return <span className="text-muted-foreground">—</span>;
+                    return (
+                      <ul className="space-y-0.5 text-sm">
+                        {extra.map((e, i) => (
+                          <li key={i}>
+                            <span className="text-muted-foreground">
+                              {e.label}:
+                            </span>{" "}
+                            {e.value}
+                          </li>
+                        ))}
+                      </ul>
+                    );
+                  })()}
+                </TableCell>
                 <TableCell>{dateFmt.format(a.createdAt)}</TableCell>
                 <TableCell>
                   <Badge variant={STATUS[a.status].variant}>
