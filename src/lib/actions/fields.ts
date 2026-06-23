@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireMember } from "@/lib/tenant";
 import { applicationFieldSchema } from "@/lib/validations";
-import { Role } from "@/generated/prisma/client";
 
 export type FieldFormState = { error?: string; ok?: boolean } | undefined;
 
@@ -14,7 +13,7 @@ export async function addApplicationField(
   _prev: FieldFormState,
   formData: FormData,
 ): Promise<FieldFormState> {
-  await requireMember(organizationId, [Role.OWNER, Role.BOARD]);
+  await requireMember(organizationId, "SETTINGS", "WRITE");
 
   const parsed = applicationFieldSchema.safeParse({
     label: formData.get("label"),
@@ -52,7 +51,7 @@ export async function deleteApplicationField(fieldId: string) {
   });
   if (!field) throw new Error("Pole nie istnieje.");
 
-  await requireMember(field.organizationId, [Role.OWNER, Role.BOARD]);
+  await requireMember(field.organizationId, "SETTINGS", "WRITE");
 
   await prisma.applicationField.delete({ where: { id: fieldId } });
   revalidatePath("/settings");

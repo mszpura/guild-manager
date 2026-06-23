@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
-import { ApplicationStatus, PaymentStatus, Role } from "@/generated/prisma/client";
+import { ApplicationStatus, PaymentStatus } from "@/generated/prisma/client";
 import { formatPLN } from "@/lib/money";
 import { ApplicationActions } from "@/components/application-actions";
 import { Badge } from "@/components/ui/badge";
@@ -55,7 +55,7 @@ export default async function ApplicationsPage() {
   if (!data) redirect("/signin");
   if (!data.active) redirect("/organizations/new");
   const orgId = data.active.organizationId;
-  await requireMember(orgId, [Role.OWNER, Role.BOARD]);
+  await requireMember(orgId, "APPLICATIONS", "READ");
 
   const applications = await prisma.membershipApplication.findMany({
     where: { organizationId: orgId },

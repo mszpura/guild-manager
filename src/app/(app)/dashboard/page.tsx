@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getActiveOrg } from "@/lib/tenant";
-import { ROLE_LABELS } from "@/lib/roles";
-import { Role } from "@/generated/prisma/client";
+import { can } from "@/lib/permissions";
 import {
   Card,
   CardDescription,
@@ -33,17 +32,20 @@ export default async function DashboardPage() {
   if (!data) redirect("/signin");
   if (!data.active) redirect("/organizations/new");
   const active = data.active;
-
-  const isAdmin = active.role === Role.OWNER || active.role === Role.BOARD;
+  const role = active.role;
 
   const tiles: Tile[] = [
-    {
-      title: "Członkowie",
-      description: "Lista członków stowarzyszenia.",
-      icon: Users,
-      href: "/members",
-    },
-    ...(isAdmin
+    ...(can(role, "MEMBERS", "READ")
+      ? [
+          {
+            title: "Członkowie",
+            description: "Lista członków stowarzyszenia.",
+            icon: Users,
+            href: "/members",
+          },
+        ]
+      : []),
+    ...(can(role, "APPLICATIONS", "READ")
       ? [
           {
             title: "Zgłoszenia",
@@ -51,9 +53,13 @@ export default async function DashboardPage() {
             icon: Inbox,
             href: "/applications",
           },
+        ]
+      : []),
+    ...(can(role, "SETTINGS", "WRITE")
+      ? [
           {
             title: "Ustawienia",
-            description: "Konfiguruj formularz zgłoszeniowy.",
+            description: "Konfiguruj formularz, składki i role.",
             icon: Settings,
             href: "/settings",
           },
@@ -75,9 +81,7 @@ export default async function DashboardPage() {
     <div className="mx-auto max-w-4xl space-y-8">
       <div>
         <h1 className="text-2xl font-semibold">{active.organization.name}</h1>
-        <p className="text-muted-foreground">
-          Twoja rola: {ROLE_LABELS[active.role]}
-        </p>
+        <p className="text-muted-foreground">Twoja rola: {role.name}</p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

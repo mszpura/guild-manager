@@ -2,18 +2,19 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import type { Prisma, Role } from "@/generated/prisma/client";
+import type { Prisma } from "@/generated/prisma/client";
+import { can, type Area, type Level } from "@/lib/permissions";
 
 // Sesja zalogowanego użytkownika. cache() = jedno zapytanie na render.
 export const getSession = cache(async () => auth());
 
-// Lekki widok członka + stowarzyszenia dla nawigacji/przełącznika.
+// Lekki widok członka + roli + stowarzyszenia dla nawigacji/przełącznika.
 // Świadomie NIE dołączamy inviteToken ani danych osobowych — payload trafia do
-// klienta (OrgSwitcher), a token zarządza wyłącznie administrator.
+// klienta (OrgSwitcher).
 const memberWithOrgSelect = {
   id: true,
   organizationId: true,
-  role: true,
+  role: { select: { id: true, name: true, isOwner: true, permissions: true } },
   organization: { select: { id: true, name: true } },
 } satisfies Prisma.MemberSelect;
 
@@ -51,10 +52,14 @@ export async function getActiveOrg() {
   return { members, active };
 }
 
-// Wymusza, że zalogowany użytkownik należy do danego stowarzyszenia
-// (opcjonalnie z jedną z wymaganych ról) — dopasowanie po e-mailu. Podstawa
-// każdej operacji tenant-scoped; redirect przerywa też akcje serwerowe (twardy deny).
-export async function requireMember(organizationId: string, roles?: Role[]) {
+// Wymusza, że zalogowany użytkownik należy do danego stowarzyszenia i (opcjonalnie)
+// ma wymagane uprawnienie w danym obszarze — dopasowanie po e-mailu. Podstawa każdej
+// operacji tenant-scoped; redirect przerywa też akcje serwerowe (twardy deny).
+export async function requireMember(
+  organizationId: string,
+  area?: Area,
+  level?: Level,
+) {
   const session = await getSession();
   if (!session?.user) redirect("/signin");
 
@@ -63,13 +68,16 @@ export async function requireMember(organizationId: string, roles?: Role[]) {
 
   const member = await prisma.member.findUnique({
     where: { organizationId_email: { organizationId, email } },
+    include: {
+      role: { select: { id: true, name: true, isOwner: true, permissions: true } },
+    },
   });
 
   // Brak wpisu → użytkownik nie należy do tej organizacji.
   if (!member) redirect("/dashboard");
 
-  // Niewystarczająca rola → odeślij do pulpitu (bezpieczny dla każdej roli).
-  if (roles && !roles.includes(member.role)) redirect("/dashboard");
+  // Niewystarczające uprawnienie → odeślij do pulpitu.
+  if (area && level && !can(member.role, area, level)) redirect("/dashboard");
 
   return member;
 }

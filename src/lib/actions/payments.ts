@@ -5,7 +5,6 @@ import { prisma } from "@/lib/prisma";
 import { requireMember } from "@/lib/tenant";
 import { paymentTierLabelSchema } from "@/lib/validations";
 import { parsePLN } from "@/lib/money";
-import { Role } from "@/generated/prisma/client";
 
 export type TierFormState = { error?: string; ok?: boolean } | undefined;
 
@@ -14,7 +13,7 @@ export async function setMembershipPaid(
   organizationId: string,
   paid: boolean,
 ) {
-  await requireMember(organizationId, [Role.OWNER, Role.BOARD]);
+  await requireMember(organizationId, "SETTINGS", "WRITE");
   await prisma.organization.update({
     where: { id: organizationId },
     data: { membershipPaid: paid },
@@ -28,7 +27,7 @@ export async function addPaymentTier(
   _prev: TierFormState,
   formData: FormData,
 ): Promise<TierFormState> {
-  await requireMember(organizationId, [Role.OWNER, Role.BOARD]);
+  await requireMember(organizationId, "SETTINGS", "WRITE");
 
   const labelResult = paymentTierLabelSchema.safeParse(formData.get("label"));
   if (!labelResult.success) {
@@ -67,7 +66,7 @@ export async function deletePaymentTier(tierId: string) {
   });
   if (!tier) throw new Error("Próg nie istnieje.");
 
-  await requireMember(tier.organizationId, [Role.OWNER, Role.BOARD]);
+  await requireMember(tier.organizationId, "SETTINGS", "WRITE");
 
   await prisma.paymentTier.delete({ where: { id: tierId } });
   revalidatePath("/settings");

@@ -57,6 +57,13 @@ export const paymentTierLabelSchema = z
   .min(1, "Podaj nazwę progu.")
   .max(100, "Nazwa progu jest za długa.");
 
+// Walidacja nazwy roli (macierz uprawnień parsuje parsePermissions w akcji).
+export const roleNameSchema = z
+  .string()
+  .trim()
+  .min(1, "Podaj nazwę roli.")
+  .max(50, "Nazwa roli jest za długa.");
+
 // Tworzy URL-bezpieczny slug z nazwy stowarzyszenia (obsługuje polskie znaki).
 export function slugify(input: string): string {
   return input

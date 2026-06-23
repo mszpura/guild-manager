@@ -10,11 +10,7 @@ import { applicationSchema } from "@/lib/validations";
 import { sendWelcomeEmail, sendPaymentLinkEmail } from "@/lib/email";
 import { getStripe, createCheckoutSession } from "@/lib/stripe";
 import { formatPLN } from "@/lib/money";
-import {
-  ApplicationStatus,
-  PaymentStatus,
-  Role,
-} from "@/generated/prisma/client";
+import { ApplicationStatus, PaymentStatus } from "@/generated/prisma/client";
 
 export type ApplicationFormState =
   | { ok?: boolean; error?: string }
@@ -177,11 +173,18 @@ export async function approveApplication(applicationId: string) {
   });
   if (!application) throw new Error("Zgłoszenie nie istnieje.");
 
-  await requireMember(application.organizationId, [Role.OWNER, Role.BOARD]);
+  await requireMember(application.organizationId, "APPLICATIONS", "WRITE");
 
   if (application.status !== ApplicationStatus.PENDING) {
     throw new Error("To zgłoszenie zostało już rozpatrzone.");
   }
+
+  // Rola domyślna stowarzyszenia (Członek) — nadawana zatwierdzonym.
+  const defaultRole = await prisma.role.findFirst({
+    where: { organizationId: application.organizationId, isDefault: true },
+    select: { id: true },
+  });
+  if (!defaultRole) throw new Error("Brak domyślnej roli w stowarzyszeniu.");
 
   // Transakcja: utwórz członka i oznacz zgłoszenie. unique(orgId,email) chroni
   // regułę „jeden e-mail = jeden członek" także przy wyścigu.
@@ -189,6 +192,7 @@ export async function approveApplication(applicationId: string) {
     await tx.member.create({
       data: {
         organizationId: application.organizationId,
+        roleId: defaultRole.id,
         firstName: application.firstName,
         lastName: application.lastName,
         email: application.email,
@@ -230,7 +234,7 @@ export async function rejectApplication(applicationId: string) {
   });
   if (!application) throw new Error("Zgłoszenie nie istnieje.");
 
-  await requireMember(application.organizationId, [Role.OWNER, Role.BOARD]);
+  await requireMember(application.organizationId, "APPLICATIONS", "WRITE");
 
   if (application.status !== ApplicationStatus.PENDING) {
     throw new Error("To zgłoszenie zostało już rozpatrzone.");

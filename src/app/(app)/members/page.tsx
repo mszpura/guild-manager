@@ -2,8 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
-import { Role } from "@/generated/prisma/client";
-import { ROLE_LABELS } from "@/lib/roles";
+import { can } from "@/lib/permissions";
 import { InviteLinkCard } from "@/components/invite-link-card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -23,9 +22,9 @@ export default async function MembersPage() {
   if (!data.active) redirect("/organizations/new");
   const orgId = data.active.organizationId;
 
-  // Dostęp dla każdej roli; rola steruje zakresem widocznych danych.
-  const me = await requireMember(orgId);
-  const isAdmin = me.role === Role.OWNER || me.role === Role.BOARD;
+  // Podgląd listy wymaga MEMBERS≥READ; zarządzanie (link, dane wrażliwe) → MEMBERS WRITE.
+  const me = await requireMember(orgId, "MEMBERS", "READ");
+  const isAdmin = can(me.role, "MEMBERS", "WRITE");
 
   const [org, members] = await Promise.all([
     prisma.organization.findUnique({
@@ -34,8 +33,13 @@ export default async function MembersPage() {
     }),
     prisma.member.findMany({
       where: { organizationId: orgId },
-      // Właściciel/zarząd na górze (kolejność enuma OWNER→BOARD→MEMBER), potem nazwisko.
-      orderBy: [{ role: "asc" }, { lastName: "asc" }, { firstName: "asc" }],
+      include: { role: { select: { name: true, isOwner: true } } },
+      // Właściciel na górze, potem alfabetycznie.
+      orderBy: [
+        { role: { isOwner: "desc" } },
+        { lastName: "asc" },
+        { firstName: "asc" },
+      ],
     }),
   ]);
 
@@ -75,8 +79,8 @@ export default async function MembersPage() {
               <TableCell className="font-medium">{m.lastName ?? "—"}</TableCell>
               <TableCell>{m.firstName}</TableCell>
               <TableCell>
-                <Badge variant={m.role === Role.MEMBER ? "secondary" : "default"}>
-                  {ROLE_LABELS[m.role]}
+                <Badge variant={m.role.isOwner ? "default" : "secondary"}>
+                  {m.role.name}
                 </Badge>
               </TableCell>
               {isAdmin ? <TableCell>{m.email}</TableCell> : null}

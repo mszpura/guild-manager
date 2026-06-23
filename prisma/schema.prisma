@@ -72,12 +72,6 @@ model VerificationToken {
 
 // ─── Domena: stowarzyszenia, członkostwo, role ──────────────────────────────
 
-enum Role {
-  OWNER // właściciel / założyciel
-  BOARD // zarząd
-  MEMBER // członek
-}
-
 model Organization {
   id        String   @id @default(cuid())
   name      String
@@ -93,10 +87,30 @@ model Organization {
   membershipPaid Boolean @default(false)
 
   members           Member[]
+  roles             Role[]
   applications      MembershipApplication[]
   applicationFields ApplicationField[]
   paymentTiers      PaymentTier[]
   // Kolejne kroki dodadzą tu: meetings, resolutions — każdy z organizationId.
+}
+
+// Rola w stowarzyszeniu (konfigurowalna) + macierz uprawnień (JSON: obszar → poziom).
+model Role {
+  id             String       @id @default(cuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  name        String
+  permissions Json // { MEMBERS:"WRITE", APPLICATIONS:"READ", MEETINGS:"NONE", RESOLUTIONS:"NONE", SETTINGS:"NONE" }
+  isOwner     Boolean  @default(false) // pełne uprawnienia, zablokowana do edycji/usuwania
+  isSystem    Boolean  @default(false) // Właściciel/Członek — nieusuwalne
+  isDefault   Boolean  @default(false) // rola nadawana zatwierdzonym zgłoszeniom (Członek)
+  createdAt   DateTime @default(now())
+
+  members Member[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }
 
 // ─── Domena: członkowie stowarzyszenia i zgłoszenia ─────────────────────────
@@ -182,7 +196,9 @@ model Member {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   organizationId String
 
-  role      Role      @default(MEMBER)
+  role   Role   @relation(fields: [roleId], references: [id])
+  roleId String
+
   firstName String
   lastName  String? // opcjonalne (np. jednoczłonowa nazwa założyciela)
   email     String
@@ -191,4 +207,5 @@ model Member {
 
   @@unique([organizationId, email]) // jeden e-mail = jeden członek danego stowarzyszenia
   @@index([organizationId])
+  @@index([roleId])
 }

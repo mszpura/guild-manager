@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { createOrganizationSchema, slugify } from "@/lib/validations";
 import { generateInviteToken } from "@/lib/tokens";
 import { requireMember } from "@/lib/tenant";
-import { Role } from "@/generated/prisma/client";
+import { OWNER_PERMISSIONS, MEMBER_PERMISSIONS } from "@/lib/permissions";
 
 export type FormState = { error?: string } | undefined;
 
@@ -61,11 +61,30 @@ export async function createOrganization(
     const org = await tx.organization.create({
       data: { name: parsed.data.name, slug, inviteToken: generateInviteToken() },
     });
-    // Twórca staje się członkiem z rolą OWNER (pojawia się na liście członków).
+    // Dwie domyślne role: Właściciel (pełne, zablokowana) i Członek (domyślna).
+    const ownerRole = await tx.role.create({
+      data: {
+        organizationId: org.id,
+        name: "Właściciel",
+        permissions: OWNER_PERMISSIONS,
+        isOwner: true,
+        isSystem: true,
+      },
+    });
+    await tx.role.create({
+      data: {
+        organizationId: org.id,
+        name: "Członek",
+        permissions: MEMBER_PERMISSIONS,
+        isSystem: true,
+        isDefault: true,
+      },
+    });
+    // Twórca staje się członkiem z rolą Właściciel (pojawia się na liście członków).
     await tx.member.create({
       data: {
         organizationId: org.id,
-        role: Role.OWNER,
+        roleId: ownerRole.id,
         email,
         firstName,
         lastName,
@@ -107,7 +126,7 @@ export async function setActiveOrganization(organizationId: string) {
 
 // Generuje nowy token linku zapraszającego (unieważnia poprzedni). OWNER/BOARD.
 export async function regenerateInviteLink(organizationId: string) {
-  await requireMember(organizationId, [Role.OWNER, Role.BOARD]);
+  await requireMember(organizationId, "MEMBERS", "WRITE");
   await prisma.organization.update({
     where: { id: organizationId },
     data: { inviteToken: generateInviteToken() },
@@ -120,7 +139,7 @@ export async function setInviteEnabled(
   organizationId: string,
   enabled: boolean,
 ) {
-  await requireMember(organizationId, [Role.OWNER, Role.BOARD]);
+  await requireMember(organizationId, "MEMBERS", "WRITE");
   await prisma.organization.update({
     where: { id: organizationId },
     data: { inviteEnabled: enabled },

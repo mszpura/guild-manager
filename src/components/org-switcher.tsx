@@ -4,7 +4,6 @@ import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, ChevronsUpDown, Plus } from "lucide-react";
 import { setActiveOrganization } from "@/lib/actions/organization";
-import { ROLE_LABELS } from "@/lib/roles";
 import type { MemberWithOrg } from "@/lib/tenant";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,7 +48,7 @@ export function OrgSwitcher({
             </span>
             {active ? (
               <span className="text-xs text-muted-foreground">
-                {ROLE_LABELS[active.role]}
+                {active.role.name}
               </span>
             ) : null}
           </span>

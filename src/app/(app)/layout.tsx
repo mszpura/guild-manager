@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { getActiveOrg, getSession } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
-import { ApplicationStatus, Role } from "@/generated/prisma/client";
+import { ApplicationStatus } from "@/generated/prisma/client";
+import { can } from "@/lib/permissions";
 import { OrgSwitcher } from "@/components/org-switcher";
 import { UserMenu } from "@/components/user-menu";
 import {
@@ -27,10 +28,11 @@ export default async function AppLayout({
 
   const session = await getSession();
   const { members, active } = data;
+  const role = active.role;
 
-  const isAdmin =
-    active.role === Role.OWNER || active.role === Role.BOARD;
-  const pendingCount = isAdmin
+  // Widoczność sekcji wg uprawnień roli (jak menu boczne).
+  const canApplications = can(role, "APPLICATIONS", "READ");
+  const pendingCount = canApplications
     ? await prisma.membershipApplication.count({
         where: {
           organizationId: active.organizationId,
@@ -39,7 +41,6 @@ export default async function AppLayout({
       })
     : 0;
 
-  // Pozycje nawigacji. „Zgłoszenia" tylko dla OWNER/BOARD; „Członkowie" dla każdej roli.
   const nav: {
     href: string;
     label: string;
@@ -48,8 +49,10 @@ export default async function AppLayout({
     count?: number;
   }[] = [
     { href: "/dashboard", label: "Pulpit", icon: LayoutDashboard, ready: true },
-    { href: "/members", label: "Członkowie", icon: Users, ready: true },
-    ...(isAdmin
+    ...(can(role, "MEMBERS", "READ")
+      ? [{ href: "/members", label: "Członkowie", icon: Users, ready: true }]
+      : []),
+    ...(canApplications
       ? [
           {
             href: "/applications",
@@ -62,7 +65,7 @@ export default async function AppLayout({
       : []),
     { href: "#", label: "Spotkania", icon: FileText, ready: false },
     { href: "#", label: "Uchwały", icon: Gavel, ready: false },
-    ...(isAdmin
+    ...(can(role, "SETTINGS", "WRITE")
       ? [{ href: "/settings", label: "Ustawienia", icon: Settings, ready: true }]
       : []),
   ];
