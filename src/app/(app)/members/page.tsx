@@ -4,6 +4,7 @@ import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/permissions";
 import { InviteLinkCard } from "@/components/invite-link-card";
+import { MemberRoleSelect } from "@/components/member-role-select";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -26,7 +27,7 @@ export default async function MembersPage() {
   const me = await requireMember(orgId, "MEMBERS", "READ");
   const isAdmin = can(me.role, "MEMBERS", "WRITE");
 
-  const [org, members] = await Promise.all([
+  const [org, members, roles] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: orgId },
       select: { inviteToken: true, inviteEnabled: true },
@@ -41,6 +42,14 @@ export default async function MembersPage() {
         { firstName: "asc" },
       ],
     }),
+    // Lista ról do dropdownu zmiany roli (tylko dla zarządzających).
+    isAdmin
+      ? prisma.role.findMany({
+          where: { organizationId: orgId },
+          orderBy: [{ isOwner: "desc" }, { isSystem: "desc" }, { createdAt: "asc" }],
+          select: { id: true, name: true },
+        })
+      : Promise.resolve([]),
   ]);
 
   const inviteUrl = org?.inviteToken
@@ -79,9 +88,17 @@ export default async function MembersPage() {
               <TableCell className="font-medium">{m.lastName ?? "—"}</TableCell>
               <TableCell>{m.firstName}</TableCell>
               <TableCell>
-                <Badge variant={m.role.isOwner ? "default" : "secondary"}>
-                  {m.role.name}
-                </Badge>
+                {isAdmin ? (
+                  <MemberRoleSelect
+                    memberId={m.id}
+                    roleId={m.roleId}
+                    roles={roles}
+                  />
+                ) : (
+                  <Badge variant={m.role.isOwner ? "default" : "secondary"}>
+                    {m.role.name}
+                  </Badge>
+                )}
               </TableCell>
               {isAdmin ? <TableCell>{m.email}</TableCell> : null}
               {isAdmin ? (
