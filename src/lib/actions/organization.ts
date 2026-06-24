@@ -4,12 +4,52 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { createOrganizationSchema, slugify } from "@/lib/validations";
+import {
+  createOrganizationSchema,
+  organizationDetailsSchema,
+  slugify,
+} from "@/lib/validations";
 import { generateInviteToken } from "@/lib/tokens";
 import { requireMember } from "@/lib/tenant";
 import { OWNER_PERMISSIONS, MEMBER_PERMISSIONS } from "@/lib/permissions";
 
-export type FormState = { error?: string } | undefined;
+export type FormState = { error?: string; ok?: boolean } | undefined;
+
+// Aktualizuje dane stowarzyszenia (dane podstawowe + adres siedziby). Wymaga SETTINGS WRITE.
+export async function updateOrganizationDetails(
+  organizationId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  await requireMember(organizationId, "SETTINGS", "WRITE");
+
+  const str = (key: string) => String(formData.get(key) ?? "");
+  const parsed = organizationDetailsSchema.safeParse({
+    name: str("name"),
+    krs: str("krs"),
+    nip: str("nip"),
+    regon: str("regon"),
+    foundedYear: str("foundedYear"),
+    contactEmail: str("contactEmail"),
+    phone: str("phone"),
+    street: str("street"),
+    postalCode: str("postalCode"),
+    city: str("city"),
+    description: str("description"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Nieprawidłowe dane." };
+  }
+
+  await prisma.organization.update({
+    where: { id: organizationId },
+    data: parsed.data,
+  });
+
+  revalidatePath("/settings");
+  revalidatePath("/", "layout"); // nazwa w app barze / podtytuł pulpitu
+  return { ok: true };
+}
 
 // Rozbija pełną nazwę użytkownika na imię + (opcjonalne) nazwisko.
 // Bez nazwy → imię z części adresu e-mail przed @.

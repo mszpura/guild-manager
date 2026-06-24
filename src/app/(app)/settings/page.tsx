@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { ApplicationFieldsManager } from "@/components/application-fields-manager";
 import { PaymentSettings } from "@/components/payment-settings";
 import { RolesManager } from "@/components/roles-manager";
+import { OrgDetailsForm } from "@/components/org-details-form";
 import {
   Card,
   CardContent,
@@ -35,7 +36,20 @@ export default async function SettingsPage() {
     }),
     prisma.organization.findUnique({
       where: { id: orgId },
-      select: { membershipPaid: true },
+      select: {
+        name: true,
+        krs: true,
+        nip: true,
+        regon: true,
+        foundedYear: true,
+        contactEmail: true,
+        phone: true,
+        street: true,
+        postalCode: true,
+        city: true,
+        description: true,
+        membershipPaid: true,
+      },
     }),
     prisma.paymentTier.findMany({
       where: { organizationId: orgId },
@@ -56,20 +70,53 @@ export default async function SettingsPage() {
   ]);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">Ustawienia</h1>
-        <p className="text-muted-foreground">
-          Konfiguracja stowarzyszenia „{data.active.organization.name}”.
+        <h1 className="text-2xl font-extrabold tracking-tight">Ustawienia</h1>
+        <p className="text-sm text-muted-foreground">
+          Zarządzaj danymi i konfiguracją stowarzyszenia
         </p>
       </div>
 
-      <Tabs defaultValue="form">
-        <TabsList>
-          <TabsTrigger value="form">Formularz</TabsTrigger>
-          <TabsTrigger value="payments">Składki</TabsTrigger>
-          <TabsTrigger value="roles">Role</TabsTrigger>
+      <Tabs defaultValue="org">
+        <TabsList
+          variant="line"
+          className="h-auto w-full justify-start gap-[30px] rounded-none border-b bg-transparent p-0"
+        >
+          {[
+            ["org", "Stowarzyszenie"],
+            ["form", "Formularz"],
+            ["payments", "Składki"],
+            ["roles", "Role"],
+          ].map(([value, label]) => (
+            <TabsTrigger
+              key={value}
+              value={value}
+              className="-mb-px flex-none rounded-none border-x-0 border-t-0 border-b-2 border-transparent px-0.5 pb-3.5 text-sm font-semibold text-muted-foreground shadow-none after:hidden hover:text-foreground data-active:border-b-primary data-active:font-bold data-active:text-foreground data-active:shadow-none"
+            >
+              {label}
+            </TabsTrigger>
+          ))}
         </TabsList>
+
+        <TabsContent value="org">
+          <OrgDetailsForm
+            organizationId={orgId}
+            org={{
+              name: org?.name ?? "",
+              krs: org?.krs ?? null,
+              nip: org?.nip ?? null,
+              regon: org?.regon ?? null,
+              foundedYear: org?.foundedYear ?? null,
+              contactEmail: org?.contactEmail ?? null,
+              phone: org?.phone ?? null,
+              street: org?.street ?? null,
+              postalCode: org?.postalCode ?? null,
+              city: org?.city ?? null,
+              description: org?.description ?? null,
+            }}
+          />
+        </TabsContent>
 
         <TabsContent value="form">
           <Card>

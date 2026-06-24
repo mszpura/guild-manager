@@ -79,6 +79,19 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Dane rejestrowe i kontaktowe stowarzyszenia (opcjonalne).
+  krs          String?
+  nip          String?
+  regon        String?
+  foundedYear  Int?
+  contactEmail String?
+  phone        String?
+  // Adres siedziby (rozbity).
+  street       String?
+  postalCode   String?
+  city         String?
+  description  String?
+
   // Link zapraszający — jeden na stowarzyszenie (regenerowalny, włącz/wyłącz).
   inviteToken   String? @unique // token w URL-u /join/<token>
   inviteEnabled Boolean @default(true)
@@ -91,7 +104,8 @@ model Organization {
   applications      MembershipApplication[]
   applicationFields ApplicationField[]
   paymentTiers      PaymentTier[]
-  // Kolejne kroki dodadzą tu: meetings, resolutions — każdy z organizationId.
+  meetings          Meeting[]
+  // Kolejne kroki dodadzą tu: resolutions — każdy z organizationId.
 }
 
 // Rola w stowarzyszeniu (konfigurowalna) + macierz uprawnień (JSON: obszar → poziom).
@@ -107,7 +121,8 @@ model Role {
   isDefault   Boolean  @default(false) // rola nadawana zatwierdzonym zgłoszeniom (Członek)
   createdAt   DateTime @default(now())
 
-  members Member[]
+  members      Member[]
+  meetingRoles MeetingRole[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -207,5 +222,45 @@ model Member {
 
   @@unique([organizationId, email]) // jeden e-mail = jeden członek danego stowarzyszenia
   @@index([organizationId])
+  @@index([roleId])
+}
+
+// ─── Domena: spotkania (walne zebrania, posiedzenia zarządu) ─────────────────
+
+enum MeetingType {
+  GENERAL_ASSEMBLY // Walne zebranie
+  BOARD_MEETING // Posiedzenie zarządu
+}
+
+// Spotkanie stowarzyszenia. Lista uprawnionych ról steruje tym, kto widzi je
+// wśród „nadchodzących”. Brak ról (pusta lista) = otwarte dla wszystkich członków.
+model Meeting {
+  id             String       @id @default(cuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  title    String
+  type     MeetingType
+  startsAt DateTime // data i godzina rozpoczęcia
+  location String? // adres albo URL do spotkania online
+  agenda   String? // porządek obrad (tekst wieloliniowy)
+
+  // Role uprawnione do udziału. Pusta lista = wszyscy członkowie.
+  allowedRoles MeetingRole[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId, startsAt])
+}
+
+// Łącznik wiele-do-wielu: które role mogą wziąć udział w danym spotkaniu.
+model MeetingRole {
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  meetingId String
+  role      Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  roleId    String
+
+  @@id([meetingId, roleId])
   @@index([roleId])
 }

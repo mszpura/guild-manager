@@ -59,8 +59,10 @@ export default async function MembersPage() {
   return (
     <div className="mx-auto max-w-6xl space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold">Członkowie</h1>
-        <p className="text-muted-foreground">Liczba członków: {members.length}</p>
+        <h1 className="text-2xl font-extrabold tracking-tight">Członkowie</h1>
+        <p className="text-sm text-muted-foreground">
+          Liczba członków: {members.length}
+        </p>
       </div>
 
       {isAdmin ? (

@@ -11,6 +11,71 @@ export const createOrganizationSchema = z.object({
 
 export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;
 
+// Walidacja danych rejestrowych/kontaktowych stowarzyszenia (panel ustawień).
+// Puste pola opcjonalne → null. Numery: prosty format (bez sumy kontrolnej).
+const optionalDigits = (length: number, label: string) =>
+  z
+    .string()
+    .trim()
+    .transform((v) => v.replace(/[\s-]/g, ""))
+    .refine((v) => v === "" || new RegExp(`^\\d{${length}}$`).test(v), label)
+    .transform((v) => (v === "" ? null : v));
+
+const optionalText = (max: number, label: string) =>
+  z
+    .string()
+    .trim()
+    .max(max, label)
+    .transform((v) => (v === "" ? null : v));
+
+export const organizationDetailsSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Nazwa musi mieć co najmniej 2 znaki.")
+    .max(100, "Nazwa może mieć maksymalnie 100 znaków."),
+  krs: optionalDigits(10, "KRS musi mieć 10 cyfr."),
+  nip: optionalDigits(10, "NIP musi mieć 10 cyfr."),
+  regon: z
+    .string()
+    .trim()
+    .transform((v) => v.replace(/[\s-]/g, ""))
+    .refine(
+      (v) => v === "" || /^\d{9}$|^\d{14}$/.test(v),
+      "REGON musi mieć 9 lub 14 cyfr.",
+    )
+    .transform((v) => (v === "" ? null : v)),
+  foundedYear: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || /^\d{4}$/.test(v), "Rok w formacie RRRR.")
+    .transform((v) => (v === "" ? null : Number(v)))
+    .refine(
+      (v) => v === null || (v >= 1800 && v <= new Date().getFullYear()),
+      "Podaj realny rok założenia.",
+    ),
+  contactEmail: z
+    .string()
+    .trim()
+    .transform((v) => (v === "" ? null : v))
+    .refine(
+      (v) => v === null || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v),
+      "Podaj poprawny adres e-mail.",
+    ),
+  phone: optionalText(30, "Telefon jest za długi."),
+  street: optionalText(120, "Adres jest za długi."),
+  postalCode: z
+    .string()
+    .trim()
+    .transform((v) => (v === "" ? null : v))
+    .refine(
+      (v) => v === null || /^\d{2}-\d{3}$/.test(v),
+      "Kod pocztowy w formacie 00-000.",
+    ),
+  city: optionalText(80, "Nazwa miejscowości jest za długa."),
+  description: optionalText(500, "Opis jest za długi."),
+});
+
 // Walidacja publicznego formularza zgłoszeniowego (link zapraszający).
 // Dane pochodzą z publicznego źródła — walidujemy je rygorystycznie po stronie serwera.
 export const applicationSchema = z.object({
@@ -56,6 +121,31 @@ export const paymentTierLabelSchema = z
   .trim()
   .min(1, "Podaj nazwę progu.")
   .max(100, "Nazwa progu jest za długa.");
+
+// Walidacja formularza spotkania. Lista uprawnionych ról parsowana osobno w akcji
+// (formData.getAll), bo wymaga sprawdzenia przynależności do stowarzyszenia.
+export const meetingSchema = z.object({
+  title: z
+    .string()
+    .trim()
+    .min(2, "Tytuł musi mieć co najmniej 2 znaki.")
+    .max(150, "Tytuł jest za długi."),
+  type: z.enum(["GENERAL_ASSEMBLY", "BOARD_MEETING"], {
+    message: "Wybierz typ spotkania.",
+  }),
+  startsAt: z.coerce
+    .date({ message: "Podaj poprawną datę i godzinę spotkania." }),
+  location: z
+    .string()
+    .trim()
+    .max(300, "Miejsce spotkania jest za długie.")
+    .transform((v) => (v === "" ? null : v)),
+  agenda: z
+    .string()
+    .trim()
+    .max(5000, "Porządek obrad jest za długi.")
+    .transform((v) => (v === "" ? null : v)),
+});
 
 // Walidacja nazwy roli (macierz uprawnień parsuje parsePermissions w akcji).
 export const roleNameSchema = z

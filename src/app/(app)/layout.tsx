@@ -8,7 +8,7 @@ import { UserMenu } from "@/components/user-menu";
 import { NavLink } from "@/components/nav-link";
 import {
   Users,
-  FileText,
+  CalendarClock,
   Gavel,
   LayoutDashboard,
   Inbox,
@@ -63,7 +63,9 @@ export default async function AppLayout({
           },
         ]
       : []),
-    { href: "#", label: "Spotkania", icon: FileText, ready: false },
+    ...(can(role, "MEETINGS", "READ")
+      ? [{ href: "/meetings", label: "Spotkania", icon: CalendarClock, ready: true }]
+      : []),
     { href: "#", label: "Uchwały", icon: Gavel, ready: false },
     ...(can(role, "SETTINGS", "WRITE")
       ? [{ href: "/settings", label: "Ustawienia", icon: Settings, ready: true }]

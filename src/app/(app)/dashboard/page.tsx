@@ -1,119 +1,317 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getActiveOrg } from "@/lib/tenant";
+import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/permissions";
 import {
-  Card,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  MEETING_TYPE_LABELS,
+  attendableWhere,
+  relativeDays,
+} from "@/lib/meetings";
 import { Badge } from "@/components/ui/badge";
 import {
-  Users,
-  Inbox,
-  FileText,
-  Gavel,
-  Settings,
-  type LucideIcon,
-} from "lucide-react";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
-type Tile = {
-  title: string;
-  description: string;
-  icon: LucideIcon;
-  href?: string; // ustawione → kafelek aktywny (link); brak → „wkrótce"
-};
+const dateFmt = new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium" });
+const fullDateFmt = new Intl.DateTimeFormat("pl-PL", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+const meetingDateFmt = new Intl.DateTimeFormat("pl-PL", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+const timeFmt = new Intl.DateTimeFormat("pl-PL", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
 export default async function DashboardPage() {
-  // Layout (app) pełni rolę bramki, ale page i layout renderują się
-  // niezależnie — dlatego zabezpieczamy się też tutaj.
   const data = await getActiveOrg();
   if (!data) redirect("/signin");
   if (!data.active) redirect("/organizations/new");
-  const active = data.active;
-  const role = active.role;
+  const orgId = data.active.organizationId;
+  const role = data.active.role;
+  const canMembers = can(role, "MEMBERS", "READ");
 
-  const tiles: Tile[] = [
-    ...(can(role, "MEMBERS", "READ")
-      ? [
-          {
-            title: "Członkowie",
-            description: "Lista członków stowarzyszenia.",
-            icon: Users,
-            href: "/members",
-          },
-        ]
-      : []),
-    ...(can(role, "APPLICATIONS", "READ")
-      ? [
-          {
-            title: "Zgłoszenia",
-            description: "Rozpatruj zgłoszenia nowych członków.",
-            icon: Inbox,
-            href: "/applications",
-          },
-        ]
-      : []),
-    ...(can(role, "SETTINGS", "WRITE")
-      ? [
-          {
-            title: "Ustawienia",
-            description: "Konfiguruj formularz, składki i role.",
-            icon: Settings,
-            href: "/settings",
-          },
-        ]
-      : []),
-    {
-      title: "Spotkania",
-      description: "Terminy spotkań i protokoły (eksport PDF).",
-      icon: FileText,
-    },
-    {
-      title: "Uchwały",
-      description: "Numerowane uchwały z eksportem do PDF.",
-      icon: Gavel,
-    },
-  ];
+  const now = new Date();
+
+  const [org, memberCount, recentMembers, upcomingMeetings] = await Promise.all([
+    prisma.organization.findUnique({
+      where: { id: orgId },
+      select: { name: true, krs: true },
+    }),
+    prisma.member.count({ where: { organizationId: orgId } }),
+    canMembers
+      ? prisma.member.findMany({
+          where: { organizationId: orgId },
+          include: { role: { select: { name: true, isOwner: true } } },
+          orderBy: { joinedAt: "desc" },
+          take: 6,
+        })
+      : Promise.resolve([]),
+    // Nadchodzące spotkania, w których ten członek może wziąć udział
+    // (rola na liście lub spotkanie otwarte dla wszystkich).
+    prisma.meeting.findMany({
+      where: {
+        organizationId: orgId,
+        startsAt: { gte: now },
+        ...attendableWhere(role.id),
+      },
+      orderBy: { startsAt: "asc" },
+      take: 3,
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        startsAt: true,
+        location: true,
+        agenda: true,
+      },
+    }),
+  ]);
+
+  const nextMeeting = upcomingMeetings[0];
+  const today = fullDateFmt.format(new Date());
+  const todayCap = today.charAt(0).toUpperCase() + today.slice(1);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold">{active.organization.name}</h1>
-        <p className="text-muted-foreground">Twoja rola: {role.name}</p>
+    <div className="mx-auto max-w-6xl space-y-6">
+      {/* nagłówek */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight">Pulpit</h1>
+          <p className="text-sm text-muted-foreground">
+            {org?.name}
+            {org?.krs ? ` · KRS ${org.krs}` : ""}
+          </p>
+        </div>
+        <div className="font-mono text-xs text-muted-foreground">{todayCap}</div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {tiles.map((tile) => {
-          const inner = (
-            <CardHeader>
-              <tile.icon className="size-6 text-muted-foreground" />
-              <CardTitle className="mt-2 flex items-center gap-2">
-                {tile.title}
-                {!tile.href ? (
-                  <Badge variant="secondary" className="text-[10px]">
-                    wkrótce
-                  </Badge>
-                ) : null}
-              </CardTitle>
-              <CardDescription>{tile.description}</CardDescription>
-            </CardHeader>
-          );
+      {/* karty statystyk */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Link
+          href="/members"
+          className="rounded-xl border bg-card p-5 transition-colors hover:border-primary/50"
+        >
+          <StatLabel>CZŁONKOWIE</StatLabel>
+          <div className="font-heading text-3xl font-extrabold leading-none">
+            {memberCount}
+          </div>
+          <div className="mt-2 text-xs font-medium text-muted-foreground">
+            Łącznie w stowarzyszeniu
+          </div>
+        </Link>
 
-          return tile.href ? (
-            <Link key={tile.title} href={tile.href}>
-              <Card className="h-full transition-colors hover:border-primary/50 hover:bg-accent/40">
-                {inner}
-              </Card>
-            </Link>
+        <div className="rounded-xl border bg-card p-5">
+          <StatLabel>
+            UCHWAŁY 2026 <Demo />
+          </StatLabel>
+          <div className="font-heading text-3xl font-extrabold leading-none">
+            7
+          </div>
+          <div className="mt-2 text-xs text-muted-foreground">
+            Ostatnia: 12.03.2026
+          </div>
+        </div>
+
+        <div className="rounded-xl border bg-card p-5">
+          <StatLabel>
+            OPŁACONE SKŁADKI <Demo />
+          </StatLabel>
+          <div className="font-heading text-3xl font-extrabold leading-none">
+            98%
+          </div>
+          <div className="mt-2 text-xs font-medium text-destructive">
+            3 zaległości
+          </div>
+        </div>
+
+        <Link
+          href="/meetings"
+          className="block rounded-xl bg-brand p-5 text-brand-foreground transition-opacity hover:opacity-95"
+        >
+          <div className="mb-2 flex items-center gap-2 text-[11px] font-bold tracking-[0.04em] text-white/60">
+            NAJBLIŻSZE SPOTKANIE
+          </div>
+          {nextMeeting ? (
+            <>
+              <div className="font-heading text-lg font-extrabold leading-tight">
+                {MEETING_TYPE_LABELS[nextMeeting.type]}
+              </div>
+              <div className="mt-2 text-xs font-medium text-white/70">
+                {relativeDays(nextMeeting.startsAt, now)} ·{" "}
+                {meetingDateFmt.format(nextMeeting.startsAt)}
+              </div>
+            </>
           ) : (
-            <Card key={tile.title} className="h-full opacity-80">
-              {inner}
-            </Card>
-          );
-        })}
+            <>
+              <div className="font-heading text-lg font-extrabold leading-tight">
+                Brak
+              </div>
+              <div className="mt-2 text-xs font-medium text-white/70">
+                Nic nie zaplanowano
+              </div>
+            </>
+          )}
+        </Link>
+      </div>
+
+      {/* dwie kolumny */}
+      <div className="grid items-start gap-5 lg:grid-cols-[1.7fr_1fr]">
+        {/* lewa: realna lista członków */}
+        {canMembers ? (
+          <div className="overflow-hidden rounded-xl border bg-card">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <h3 className="font-heading text-base font-bold">
+                Ostatni członkowie
+              </h3>
+              <Link
+                href="/members"
+                className="text-sm font-semibold text-primary"
+              >
+                Zobacz wszystkich →
+              </Link>
+            </div>
+            {recentMembers.length === 0 ? (
+              <p className="p-8 text-center text-sm text-muted-foreground">
+                Brak członków.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Imię i nazwisko</TableHead>
+                    <TableHead>Rola</TableHead>
+                    <TableHead>Dołączył(a)</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recentMembers.map((m) => (
+                    <TableRow key={m.id}>
+                      <TableCell className="font-medium">
+                        {m.firstName} {m.lastName ?? ""}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={m.role.isOwner ? "default" : "secondary"}
+                        >
+                          {m.role.name}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {dateFmt.format(m.joinedAt)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        ) : null}
+
+        {/* prawa: widgety przykładowe */}
+        <div className="flex flex-col gap-5">
+          <div className="rounded-xl border bg-card p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-heading text-base font-bold">
+                Nadchodzące spotkania
+              </h3>
+              <Link
+                href="/meetings"
+                className="text-sm font-semibold text-primary"
+              >
+                Wszystkie →
+              </Link>
+            </div>
+            {upcomingMeetings.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Brak zaplanowanych spotkań.
+              </p>
+            ) : (
+              <ul className="space-y-4">
+                {upcomingMeetings.map((m) => {
+                  const agendaLines = (m.agenda ?? "")
+                    .split("\n")
+                    .map((l) => l.trim())
+                    .filter(Boolean);
+                  return (
+                    <li key={m.id} className="border-b pb-4 last:border-0 last:pb-0">
+                      <div className="text-sm font-semibold">{m.title}</div>
+                      <div className="mt-1 font-mono text-xs text-muted-foreground">
+                        {meetingDateFmt.format(m.startsAt)} ·{" "}
+                        {timeFmt.format(m.startsAt)}
+                        {m.location ? ` · ${m.location}` : ""}
+                      </div>
+                      {agendaLines.length > 0 ? (
+                        <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                          {agendaLines.slice(0, 3).map((line, i) => (
+                            <li key={i}>• {line}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+
+          <div className="rounded-xl border bg-card p-5">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="font-heading text-base font-bold">
+                Składki do uregulowania
+              </h3>
+              <Demo />
+            </div>
+            <ul className="space-y-3 text-sm">
+              {[
+                ["Anna Nowak", "120 zł"],
+                ["Piotr Wójcik", "120 zł"],
+                ["Krzysztof Zając", "60 zł"],
+              ].map(([name, amount]) => (
+                <li key={name} className="flex items-center justify-between">
+                  <span className="font-medium">{name}</span>
+                  <span className="font-semibold text-destructive">
+                    {amount}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
+  );
+}
+
+function StatLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-2 flex items-center gap-2 text-[11px] font-bold tracking-[0.04em] text-muted-foreground">
+      {children}
+    </div>
+  );
+}
+
+// Znacznik treści przykładowej (do wymiany na realne dane).
+function Demo({ dark }: { dark?: boolean }) {
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[9px] font-semibold tracking-normal ${
+        dark ? "bg-white/15 text-white/70" : "bg-muted text-muted-foreground"
+      }`}
+    >
+      przykładowe
+    </span>
   );
 }
