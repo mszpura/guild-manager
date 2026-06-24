@@ -34,28 +34,27 @@ export function OrgSwitcher({
     });
   }
 
+  const orgName = active?.organization.name ?? "Wybierz";
+  const orgInitial = orgName.trim().charAt(0).toUpperCase();
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
-          className="w-full justify-between"
           disabled={pending}
+          className="h-auto gap-2.5 rounded-lg bg-muted py-1.5 pr-2.5 pl-2 font-normal"
         >
-          <span className="flex flex-col items-start truncate">
-            <span className="truncate font-medium">
-              {active?.organization.name ?? "Wybierz"}
-            </span>
-            {active ? (
-              <span className="text-xs text-muted-foreground">
-                {active.role.name}
-              </span>
-            ) : null}
+          <span className="flex size-6 items-center justify-center rounded-md bg-brand text-xs font-bold text-brand-foreground">
+            {orgInitial}
           </span>
-          <ChevronsUpDown className="size-4 opacity-50" />
+          <span className="max-w-44 truncate text-sm font-semibold text-foreground">
+            {orgName}
+          </span>
+          <ChevronsUpDown className="size-3.5 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-(--radix-dropdown-menu-trigger-width)">
+      <DropdownMenuContent align="start" className="min-w-60">
         <DropdownMenuLabel>Twoje stowarzyszenia</DropdownMenuLabel>
         {members.map((m) => (
           <DropdownMenuItem

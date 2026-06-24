@@ -5,6 +5,7 @@ import { ApplicationStatus } from "@/generated/prisma/client";
 import { can } from "@/lib/permissions";
 import { OrgSwitcher } from "@/components/org-switcher";
 import { UserMenu } from "@/components/user-menu";
+import { NavLink } from "@/components/nav-link";
 import {
   Users,
   FileText,
@@ -14,7 +15,6 @@ import {
   Settings,
   type LucideIcon,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
 
 export default async function AppLayout({
@@ -71,50 +71,59 @@ export default async function AppLayout({
   ];
 
   return (
-    <div className="flex min-h-svh">
-      <aside className="flex w-64 shrink-0 flex-col border-r bg-muted/20">
-        <div className="border-b p-3">
+    <div className="flex min-h-svh flex-col">
+      {/* górny app bar */}
+      <header className="sticky top-0 z-30 flex h-[62px] items-center justify-between border-b bg-card px-6">
+        <div className="flex items-center gap-5">
+          <Brand />
+          <span className="h-6 w-px bg-border" />
           <OrgSwitcher members={members} activeId={active.organizationId} />
         </div>
-        <nav className="flex-1 space-y-1 p-3">
-          {nav.map((item) => (
-            <Link
-              key={item.label}
-              href={item.ready ? item.href : "#"}
-              aria-disabled={!item.ready}
-              className={`flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors ${
-                item.ready
-                  ? "hover:bg-accent hover:text-accent-foreground"
-                  : "pointer-events-none opacity-50"
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                <item.icon className="size-4" />
-                {item.label}
-              </span>
-              {!item.ready ? (
-                <Badge variant="secondary" className="text-[10px]">
-                  wkrótce
-                </Badge>
-              ) : item.count ? (
-                <Badge className="text-[10px]">{item.count}</Badge>
-              ) : null}
-            </Link>
-          ))}
-        </nav>
-      </aside>
+        <UserMenu
+          name={session?.user?.name}
+          email={session?.user?.email}
+          image={session?.user?.image}
+        />
+      </header>
 
-      <div className="flex flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between border-b px-6">
-          <span className="font-semibold">{active.organization.name}</span>
-          <UserMenu
-            name={session?.user?.name}
-            email={session?.user?.email}
-            image={session?.user?.image}
-          />
-        </header>
-        <main className="flex-1 p-6">{children}</main>
+      <div className="flex flex-1">
+        {/* sidebar */}
+        <aside className="sticky top-[62px] hidden h-[calc(100svh-62px)] w-[236px] shrink-0 overflow-y-auto border-r bg-sidebar p-4 md:block">
+          <p className="mb-3 px-3 text-[11px] font-bold tracking-[0.1em] text-muted-foreground">
+            ZARZĄDZANIE
+          </p>
+          <nav className="space-y-1">
+            {nav.map((item) => (
+              <NavLink
+                key={item.label}
+                href={item.href}
+                label={item.label}
+                ready={item.ready}
+                count={item.count}
+                icon={<item.icon className="size-[18px]" />}
+              />
+            ))}
+          </nav>
+        </aside>
+
+        {/* treść */}
+        <main className="min-w-0 flex-1 p-6 sm:p-8">{children}</main>
       </div>
     </div>
+  );
+}
+
+// Znak marki — dwa nachodzące kółka + wordmark (Libre Franklin).
+function Brand() {
+  return (
+    <Link href="/dashboard" className="flex items-center gap-2.5">
+      <span className="flex items-center">
+        <span className="size-3.5 rounded-full border-2 border-brand" />
+        <span className="-ml-1.5 size-3.5 rounded-full border-2 border-primary" />
+      </span>
+      <span className="font-heading text-lg font-extrabold tracking-tight text-foreground">
+        associacion
+      </span>
+    </Link>
   );
 }
