@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, X } from "lucide-react";
 import { createMeeting, updateMeeting } from "@/lib/actions/meetings";
 import { MEETING_TYPES, MEETING_TYPE_LABELS } from "@/lib/meetings";
 import { Button } from "@/components/ui/button";
@@ -21,13 +21,16 @@ import {
 
 type RoleOption = { id: string; name: string };
 
+// Punkt porządku obrad w formularzu. `id` puste = nowy punkt.
+type AgendaRow = { id: string; title: string };
+
 export type MeetingFormValues = {
   id: string;
   title: string;
   type: string;
   startsAtValue: string; // „RRRR-MM-DDTHH:mm” dla input[type=datetime-local]
   location: string;
-  agenda: string;
+  agendaItems: AgendaRow[];
   roleIds: string[];
 };
 
@@ -44,6 +47,21 @@ export function MeetingFormDialog({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [pending, start] = useTransition();
+
+  // Punkty porządku obrad — każdy dodawany osobno. Pusta lista = brak porządku.
+  const [agenda, setAgenda] = useState<AgendaRow[]>(meeting?.agendaItems ?? []);
+
+  function updateAgenda(index: number, value: string) {
+    setAgenda((items) =>
+      items.map((it, i) => (i === index ? { ...it, title: value } : it)),
+    );
+  }
+  function removeAgenda(index: number) {
+    setAgenda((items) => items.filter((_, i) => i !== index));
+  }
+  function addAgenda() {
+    setAgenda((items) => [...items, { id: "", title: "" }]);
+  }
 
   function submit(formData: FormData) {
     start(async () => {
@@ -66,7 +84,10 @@ export function MeetingFormDialog({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
-        if (!next) setError(undefined);
+        if (!next) {
+          setError(undefined);
+          setAgenda(meeting?.agendaItems ?? []);
+        }
       }}
     >
       <DialogTrigger asChild>
@@ -141,17 +162,49 @@ export function MeetingFormDialog({
             />
           </Field>
 
-          <Field>
-            <FieldLabel htmlFor="agenda">Porządek obrad</FieldLabel>
-            <textarea
-              id="agenda"
-              name="agenda"
-              defaultValue={meeting?.agenda}
-              rows={5}
-              placeholder={"1. Otwarcie zebrania\n2. Sprawozdanie zarządu\n3. Wolne wnioski"}
-              className="rounded-md border bg-transparent px-3 py-2 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
-            />
-          </Field>
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Porządek obrad</legend>
+            {agenda.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Brak punktów. Dodaj pierwszy punkt porządku obrad.
+              </p>
+            ) : (
+              <ol className="space-y-2">
+                {agenda.map((item, i) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <span className="w-5 shrink-0 text-right text-sm text-muted-foreground">
+                      {i + 1}.
+                    </span>
+                    <input type="hidden" name="agendaItemIds" value={item.id} />
+                    <Input
+                      name="agendaItems"
+                      value={item.title}
+                      onChange={(e) => updateAgenda(i, e.target.value)}
+                      placeholder="np. Sprawozdanie zarządu za 2025"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeAgenda(i)}
+                      aria-label={`Usuń punkt ${i + 1}`}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addAgenda}
+            >
+              <Plus className="size-4" />
+              Dodaj punkt
+            </Button>
+          </fieldset>
 
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">

@@ -220,6 +220,8 @@ model Member {
   birthDate DateTime? // opcjonalne (założyciel nie wypełniał formularza)
   joinedAt  DateTime  @default(now())
 
+  attendances MeetingAttendance[]
+
   @@unique([organizationId, email]) // jeden e-mail = jeden członek danego stowarzyszenia
   @@index([organizationId])
   @@index([roleId])
@@ -243,10 +245,14 @@ model Meeting {
   type     MeetingType
   startsAt DateTime // data i godzina rozpoczęcia
   location String? // adres albo URL do spotkania online
-  agenda   String? // porządek obrad (tekst wieloliniowy)
+
+  // Zakończenie spotkania. null = zaplanowane lub w toku (wg startsAt vs teraz).
+  endedAt DateTime?
 
   // Role uprawnione do udziału. Pusta lista = wszyscy członkowie.
   allowedRoles MeetingRole[]
+  agendaItems  AgendaItem[]
+  attendances  MeetingAttendance[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -263,4 +269,40 @@ model MeetingRole {
 
   @@id([meetingId, roleId])
   @@index([roleId])
+}
+
+enum AgendaItemStatus {
+  PENDING // do rozpatrzenia
+  APPROVED // zatwierdzony przez zebranie
+  REJECTED // odrzucony przez zebranie
+}
+
+// Punkt porządku obrad. Status zmieniany w widoku spotkania (zatwierdź/odrzuć).
+model AgendaItem {
+  id        String  @id @default(cuid())
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  meetingId String
+
+  order       Int              @default(0)
+  title       String
+  description String?
+  status      AgendaItemStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+
+  @@index([meetingId])
+}
+
+// Obecność członka na spotkaniu. Brak wiersza = nieodnotowany (traktowany jako nieobecny).
+model MeetingAttendance {
+  id        String  @id @default(cuid())
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  meetingId String
+  member    Member  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId  String
+
+  present Boolean @default(true)
+
+  @@unique([meetingId, memberId])
+  @@index([meetingId])
 }

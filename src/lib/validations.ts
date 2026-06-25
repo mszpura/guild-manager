@@ -122,8 +122,8 @@ export const paymentTierLabelSchema = z
   .min(1, "Podaj nazwę progu.")
   .max(100, "Nazwa progu jest za długa.");
 
-// Walidacja formularza spotkania. Lista uprawnionych ról parsowana osobno w akcji
-// (formData.getAll), bo wymaga sprawdzenia przynależności do stowarzyszenia.
+// Walidacja formularza spotkania. Lista uprawnionych ról i punkty porządku obrad
+// parsowane osobno w akcji (formData.getAll) — to pola wielokrotne.
 export const meetingSchema = z.object({
   title: z
     .string()
@@ -140,12 +140,13 @@ export const meetingSchema = z.object({
     .trim()
     .max(300, "Miejsce spotkania jest za długie.")
     .transform((v) => (v === "" ? null : v)),
-  agenda: z
-    .string()
-    .trim()
-    .max(5000, "Porządek obrad jest za długi.")
-    .transform((v) => (v === "" ? null : v)),
 });
+
+// Pojedynczy punkt porządku obrad.
+export const agendaItemSchema = z
+  .string()
+  .trim()
+  .max(300, "Punkt porządku obrad jest za długi.");
 
 // Walidacja nazwy roli (macierz uprawnień parsuje parsePermissions w akcji).
 export const roleNameSchema = z

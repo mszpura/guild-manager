@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/permissions";
@@ -24,15 +25,29 @@ const dateTimeFmt = new Intl.DateTimeFormat("pl-PL", {
   timeStyle: "short",
 });
 
-// Spotkanie z dołączonymi rolami uprawnionymi do udziału.
-type MeetingWithRoles = {
+const meetingSelect = {
+  id: true,
+  title: true,
+  type: true,
+  startsAt: true,
+  location: true,
+  endedAt: true,
+  allowedRoles: { select: { role: { select: { id: true, name: true } } } },
+  agendaItems: {
+    select: { id: true, title: true },
+    orderBy: { order: "asc" },
+  },
+} as const;
+
+type MeetingCardData = {
   id: string;
   title: string;
   type: keyof typeof MEETING_TYPE_LABELS;
   startsAt: Date;
   location: string | null;
-  agenda: string | null;
+  endedAt: Date | null;
   allowedRoles: { role: { id: string; name: string } }[];
+  agendaItems: { id: string; title: string }[];
 };
 
 export default async function MeetingsPage() {
@@ -47,9 +62,6 @@ export default async function MeetingsPage() {
   const isManager = can(me.role, "MEETINGS", "WRITE");
 
   const now = new Date();
-  const include = {
-    allowedRoles: { include: { role: { select: { id: true, name: true } } } },
-  } as const;
 
   const [upcoming, past, roles] = await Promise.all([
     // Nadchodzące: zarządzający widzą wszystkie; pozostali tylko te, w których
@@ -60,7 +72,7 @@ export default async function MeetingsPage() {
         startsAt: { gte: now },
         ...(isManager ? {} : attendableWhere(myRoleId)),
       },
-      include,
+      select: meetingSelect,
       orderBy: { startsAt: "asc" },
     }),
     prisma.meeting.findMany({
@@ -69,7 +81,7 @@ export default async function MeetingsPage() {
         startsAt: { lt: now },
         ...(isManager ? {} : attendableWhere(myRoleId)),
       },
-      include,
+      select: meetingSelect,
       orderBy: { startsAt: "desc" },
       take: 50,
     }),
@@ -163,33 +175,47 @@ function MeetingCard({
   now,
   upcoming,
 }: {
-  meeting: MeetingWithRoles;
+  meeting: MeetingCardData;
   isManager: boolean;
   roles: { id: string; name: string }[];
   now: Date;
   upcoming?: boolean;
 }) {
   const isUrl = /^https?:\/\//i.test(meeting.location ?? "");
-  const agendaLines = (meeting.agenda ?? "")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
+  const ended = meeting.endedAt !== null;
+  const inProgress = !ended && meeting.startsAt <= now;
 
   return (
-    <div
-      className={`rounded-xl border bg-card p-5 ${upcoming ? "" : "opacity-90"}`}
-    >
+    <div className="group relative rounded-xl border bg-card p-5 transition-colors hover:border-primary/50">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{MEETING_TYPE_LABELS[meeting.type]}</Badge>
-            {upcoming ? (
+            {inProgress ? (
+              <Badge className="gap-1">
+                <span className="size-1.5 rounded-full bg-current" />
+                Spotkanie w toku
+              </Badge>
+            ) : null}
+            {ended ? (
+              <Badge variant="outline" className="text-muted-foreground">
+                Zakończone
+              </Badge>
+            ) : null}
+            {upcoming && !inProgress ? (
               <span className="text-xs font-medium text-primary">
                 {relativeDays(meeting.startsAt, now)}
               </span>
             ) : null}
           </div>
-          <h3 className="font-heading text-base font-bold">{meeting.title}</h3>
+          <h3 className="font-heading text-base font-bold">
+            <Link
+              href={`/meetings/${meeting.id}`}
+              className="after:absolute after:inset-0 after:rounded-xl hover:text-primary"
+            >
+              {meeting.title}
+            </Link>
+          </h3>
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
             <CalendarClock className="size-4 shrink-0" />
             {dateTimeFmt.format(meeting.startsAt)}
@@ -202,7 +228,7 @@ function MeetingCard({
                   href={meeting.location}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="truncate text-primary underline-offset-4 hover:underline"
+                  className="relative z-10 truncate text-primary underline-offset-4 hover:underline"
                 >
                   {meeting.location}
                 </a>
@@ -214,7 +240,7 @@ function MeetingCard({
         </div>
 
         {isManager ? (
-          <div className="flex shrink-0 items-center">
+          <div className="relative z-10 flex shrink-0 items-center">
             <MeetingFormDialog
               organizationId=""
               roles={roles}
@@ -224,7 +250,10 @@ function MeetingCard({
                 type: meeting.type,
                 startsAtValue: toDateTimeLocalValue(meeting.startsAt),
                 location: meeting.location ?? "",
-                agenda: meeting.agenda ?? "",
+                agendaItems: meeting.agendaItems.map((a) => ({
+                  id: a.id,
+                  title: a.title,
+                })),
                 roleIds: meeting.allowedRoles.map((r) => r.role.id),
               }}
             />
@@ -233,15 +262,15 @@ function MeetingCard({
         ) : null}
       </div>
 
-      {agendaLines.length > 0 ? (
+      {meeting.agendaItems.length > 0 ? (
         <div className="mt-4">
           <p className="mb-1 text-xs font-bold tracking-wide text-muted-foreground">
             PORZĄDEK OBRAD
           </p>
           <ul className="space-y-1 text-sm">
-            {agendaLines.map((line, i) => (
-              <li key={i} className="text-foreground/90">
-                {line}
+            {meeting.agendaItems.map((item) => (
+              <li key={item.id} className="text-foreground/90">
+                {item.title}
               </li>
             ))}
           </ul>
@@ -253,9 +282,7 @@ function MeetingCard({
         {meeting.allowedRoles.length === 0 ? (
           <span>Wszyscy członkowie</span>
         ) : (
-          <span>
-            {meeting.allowedRoles.map((r) => r.role.name).join(", ")}
-          </span>
+          <span>{meeting.allowedRoles.map((r) => r.role.name).join(", ")}</span>
         )}
       </div>
     </div>

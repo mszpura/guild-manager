@@ -42,6 +42,7 @@ export default async function DashboardPage() {
   const orgId = data.active.organizationId;
   const role = data.active.role;
   const canMembers = can(role, "MEMBERS", "READ");
+  const canMeetings = can(role, "MEETINGS", "READ");
 
   const now = new Date();
 
@@ -75,7 +76,11 @@ export default async function DashboardPage() {
         type: true,
         startsAt: true,
         location: true,
-        agenda: true,
+        agendaItems: {
+          select: { id: true, title: true },
+          orderBy: { order: "asc" },
+          take: 3,
+        },
       },
     }),
   ]);
@@ -240,29 +245,32 @@ export default async function DashboardPage() {
               </p>
             ) : (
               <ul className="space-y-4">
-                {upcomingMeetings.map((m) => {
-                  const agendaLines = (m.agenda ?? "")
-                    .split("\n")
-                    .map((l) => l.trim())
-                    .filter(Boolean);
-                  return (
-                    <li key={m.id} className="border-b pb-4 last:border-0 last:pb-0">
+                {upcomingMeetings.map((m) => (
+                  <li key={m.id} className="border-b pb-4 last:border-0 last:pb-0">
+                    {canMeetings ? (
+                      <Link
+                        href={`/meetings/${m.id}`}
+                        className="text-sm font-semibold hover:text-primary"
+                      >
+                        {m.title}
+                      </Link>
+                    ) : (
                       <div className="text-sm font-semibold">{m.title}</div>
-                      <div className="mt-1 font-mono text-xs text-muted-foreground">
-                        {meetingDateFmt.format(m.startsAt)} ·{" "}
-                        {timeFmt.format(m.startsAt)}
-                        {m.location ? ` · ${m.location}` : ""}
-                      </div>
-                      {agendaLines.length > 0 ? (
-                        <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-                          {agendaLines.slice(0, 3).map((line, i) => (
-                            <li key={i}>• {line}</li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </li>
-                  );
-                })}
+                    )}
+                    <div className="mt-1 font-mono text-xs text-muted-foreground">
+                      {meetingDateFmt.format(m.startsAt)} ·{" "}
+                      {timeFmt.format(m.startsAt)}
+                      {m.location ? ` · ${m.location}` : ""}
+                    </div>
+                    {m.agendaItems.length > 0 ? (
+                      <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
+                        {m.agendaItems.map((item) => (
+                          <li key={item.id}>• {item.title}</li>
+                        ))}
+                      </ul>
+                    ) : null}
+                  </li>
+                ))}
               </ul>
             )}
           </div>
