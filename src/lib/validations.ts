@@ -148,6 +148,13 @@ export const agendaItemSchema = z
   .trim()
   .max(300, "Punkt porządku obrad jest za długi.");
 
+// Komentarz do punktu porządku obrad.
+export const agendaCommentSchema = z
+  .string()
+  .trim()
+  .min(1, "Komentarz nie może być pusty.")
+  .max(1000, "Komentarz jest za długi.");
+
 // Walidacja nazwy roli (macierz uprawnień parsuje parsePermissions w akcji).
 export const roleNameSchema = z
   .string()

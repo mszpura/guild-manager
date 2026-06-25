@@ -22,7 +22,7 @@ import {
 type RoleOption = { id: string; name: string };
 
 // Punkt porządku obrad w formularzu. `id` puste = nowy punkt.
-type AgendaRow = { id: string; title: string };
+type AgendaRow = { id: string; title: string; votable: boolean };
 
 export type MeetingFormValues = {
   id: string;
@@ -56,11 +56,16 @@ export function MeetingFormDialog({
       items.map((it, i) => (i === index ? { ...it, title: value } : it)),
     );
   }
+  function toggleVotable(index: number) {
+    setAgenda((items) =>
+      items.map((it, i) => (i === index ? { ...it, votable: !it.votable } : it)),
+    );
+  }
   function removeAgenda(index: number) {
     setAgenda((items) => items.filter((_, i) => i !== index));
   }
   function addAgenda() {
-    setAgenda((items) => [...items, { id: "", title: "" }]);
+    setAgenda((items) => [...items, { id: "", title: "", votable: true }]);
   }
 
   function submit(formData: FormData) {
@@ -171,17 +176,35 @@ export function MeetingFormDialog({
             ) : (
               <ol className="space-y-2">
                 {agenda.map((item, i) => (
-                  <li key={i} className="flex items-center gap-2">
+                  <li key={i} className="flex flex-wrap items-center gap-2">
                     <span className="w-5 shrink-0 text-right text-sm text-muted-foreground">
                       {i + 1}.
                     </span>
                     <input type="hidden" name="agendaItemIds" value={item.id} />
+                    <input
+                      type="hidden"
+                      name="agendaItemVotable"
+                      value={item.votable ? "1" : "0"}
+                    />
                     <Input
                       name="agendaItems"
                       value={item.title}
                       onChange={(e) => updateAgenda(i, e.target.value)}
                       placeholder="np. Sprawozdanie zarządu za 2025"
+                      className="min-w-0 flex-1"
                     />
+                    <label
+                      className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
+                      title="Czy punkt podlega głosowaniu"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={item.votable}
+                        onChange={() => toggleVotable(i)}
+                        className="size-4 rounded border-input"
+                      />
+                      Głosowanie
+                    </label>
                     <Button
                       type="button"
                       variant="ghost"

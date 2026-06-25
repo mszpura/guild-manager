@@ -18,9 +18,11 @@ type AgendaStatus = "PENDING" | "APPROVED" | "REJECTED";
 export function AgendaDecideControls({
   itemId,
   status,
+  ended,
 }: {
   itemId: string;
   status: AgendaStatus;
+  ended: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -44,7 +46,7 @@ export function AgendaDecideControls({
           type="button"
           size="sm"
           disabled={pending}
-          onClick={() => decide("APPROVED", "Punkt zatwierdzony.")}
+          onClick={() => decide("APPROVED", "Punkt zatwierdzony przez zebranie.")}
           className="bg-emerald-600 text-white hover:bg-emerald-700"
         >
           <Check className="size-4" />
@@ -55,7 +57,7 @@ export function AgendaDecideControls({
           size="sm"
           variant="outline"
           disabled={pending}
-          onClick={() => decide("REJECTED", "Punkt odrzucony.")}
+          onClick={() => decide("REJECTED", "Punkt odrzucony przez zebranie.")}
           className="border-destructive/30 text-destructive hover:bg-destructive/10"
         >
           <X className="size-4" />
@@ -65,37 +67,23 @@ export function AgendaDecideControls({
     );
   }
 
-  const approved = status === "APPROVED";
+  // Decyzja zapadła — komunikat pokazujemy jako toast (zob. decide()).
+  // Po zakończeniu spotkania nie wolno cofać zatwierdzenia punktu.
+  if (ended && status === "APPROVED") return null;
+
+  // W pozostałych przypadkach zostaje możliwość cofnięcia; status widać na znaczniku.
   return (
-    <div
-      className={`mt-4 flex items-center justify-between gap-3 rounded-lg border p-3 ${
-        approved
-          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-          : "border-destructive/20 bg-destructive/5 text-destructive"
-      }`}
-    >
-      <span className="flex items-center gap-2 text-sm font-medium">
-        <span
-          className={`flex size-[18px] items-center justify-center rounded-full text-white ${
-            approved ? "bg-emerald-600" : "bg-destructive"
-          }`}
-        >
-          {approved ? <Check className="size-3" /> : <X className="size-3" />}
-        </span>
-        {approved
-          ? "Punkt zatwierdzony przez zebranie"
-          : "Punkt odrzucony przez zebranie"}
-      </span>
+    <div className="mt-4">
       <Button
         type="button"
         size="sm"
         variant="ghost"
         disabled={pending}
         onClick={() => decide("PENDING", "Cofnięto decyzję.")}
-        className="h-7 gap-1 px-2 text-xs"
+        className="h-7 gap-1 px-2 text-xs text-muted-foreground"
       >
         <RotateCcw className="size-3.5" />
-        Cofnij
+        Cofnij decyzję
       </Button>
     </div>
   );

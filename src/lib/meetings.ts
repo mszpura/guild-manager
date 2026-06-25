@@ -12,6 +12,15 @@ export const MEETING_TYPES: MeetingType[] = [
   "BOARD_MEETING",
 ];
 
+// Próg kworum: odsetek obecnych uprawnionych wymagany do ważnego głosowania.
+export const QUORUM_THRESHOLD = 50;
+
+// Czy kworum jest spełnione przy danej obecności.
+export function hasQuorum(presentCount: number, eligibleTotal: number): boolean {
+  if (eligibleTotal === 0) return false;
+  return (presentCount / eligibleTotal) * 100 >= QUORUM_THRESHOLD;
+}
+
 // Filtr Prisma: spotkania, w których członek o danej roli może wziąć udział.
 // Pusta lista ról = spotkanie otwarte dla wszystkich członków.
 export function attendableWhere(roleId: string): Prisma.MeetingWhereInput {

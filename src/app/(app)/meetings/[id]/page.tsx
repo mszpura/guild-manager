@@ -3,20 +3,32 @@ import Link from "next/link";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/permissions";
-import { MEETING_TYPE_LABELS, toDateTimeLocalValue } from "@/lib/meetings";
+import {
+  MEETING_TYPE_LABELS,
+  QUORUM_THRESHOLD,
+  toDateTimeLocalValue,
+} from "@/lib/meetings";
 import { MeetingFormDialog } from "@/components/meeting-form-dialog";
 import {
   AgendaDecideControls,
   AttendanceToggle,
   EndMeetingButton,
 } from "@/components/meeting-detail-controls";
+import {
+  AgendaVote,
+  AgendaComments,
+} from "@/components/meeting-agenda-interactions";
 import { Badge } from "@/components/ui/badge";
 import { CalendarClock, Clock, MapPin, ChevronRight } from "lucide-react";
 
-const QUORUM_THRESHOLD = 50; // % obecnych uprawnionych do spełnienia kworum
-
 const dateFmt = new Intl.DateTimeFormat("pl-PL", { dateStyle: "long" });
 const timeFmt = new Intl.DateTimeFormat("pl-PL", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const commentTimeFmt = new Intl.DateTimeFormat("pl-PL", {
+  day: "2-digit",
+  month: "2-digit",
   hour: "2-digit",
   minute: "2-digit",
 });
@@ -54,7 +66,24 @@ export default async function MeetingDetailPage({
       allowedRoles: { select: { role: { select: { id: true, name: true } } } },
       agendaItems: {
         orderBy: { order: "asc" },
-        select: { id: true, title: true, description: true, status: true },
+        select: {
+          id: true,
+          title: true,
+          description: true,
+          status: true,
+          votable: true,
+          votes: { select: { memberId: true, choice: true } },
+          comments: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              text: true,
+              createdAt: true,
+              authorId: true,
+              author: { select: { firstName: true, lastName: true } },
+            },
+          },
+        },
       },
       attendances: { select: { memberId: true, present: true } },
     },
@@ -109,6 +138,13 @@ export default async function MeetingDetailPage({
 
   const ended = meeting.endedAt !== null;
   const inProgress = !ended && meeting.startsAt <= new Date();
+
+  // Prawo głosu: rola członka jest uprawniona (lub spotkanie otwarte dla wszystkich).
+  const eligibleToVote =
+    allowedRoleIds.length === 0 || allowedRoleIds.includes(me.roleId);
+  // Głosowanie otwarte: spotkanie trwa, członek uprawniony i jest kworum.
+  const votingOpen = !ended && eligibleToVote && quorumOk;
+  const myInitials = initials(me.firstName, me.lastName);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -170,7 +206,11 @@ export default async function MeetingDetailPage({
                 type: meeting.type,
                 startsAtValue: toDateTimeLocalValue(meeting.startsAt),
                 location: meeting.location ?? "",
-                agendaItems: agenda.map((a) => ({ id: a.id, title: a.title })),
+                agendaItems: agenda.map((a) => ({
+                  id: a.id,
+                  title: a.title,
+                  votable: a.votable,
+                })),
                 roleIds: allowedRoleIds,
               }}
             />
@@ -249,31 +289,80 @@ export default async function MeetingDetailPage({
               Brak punktów porządku obrad.
             </p>
           ) : (
-            agenda.map((item, i) => (
-              <div key={item.id} className="border-b px-5 py-5 last:border-0">
-                <div className="flex gap-3.5">
-                  <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-brand font-heading text-[13px] font-extrabold text-brand-foreground">
-                    {i + 1}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <h4 className="text-[15px] font-bold leading-snug">
-                        {item.title}
-                      </h4>
-                      <AgendaStatusBadge status={item.status} />
+            agenda.map((item, i) => {
+              const tally = {
+                FOR: item.votes.filter((v) => v.choice === "FOR").length,
+                AGAINST: item.votes.filter((v) => v.choice === "AGAINST").length,
+                ABSTAIN: item.votes.filter((v) => v.choice === "ABSTAIN").length,
+              };
+              const myChoice =
+                item.votes.find((v) => v.memberId === me.id)?.choice ?? null;
+              const comments = item.comments.map((c) => ({
+                id: c.id,
+                author: `${c.author.firstName} ${c.author.lastName ?? ""}`.trim(),
+                initials: initials(c.author.firstName, c.author.lastName),
+                time: commentTimeFmt.format(c.createdAt),
+                text: c.text,
+                canDelete: c.authorId === me.id || isManager,
+              }));
+
+              return (
+                <div key={item.id} className="border-b px-5 py-5 last:border-0">
+                  <div className="flex gap-3.5">
+                    <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-brand font-heading text-[13px] font-extrabold text-brand-foreground">
+                      {i + 1}
                     </div>
-                    {item.description ? (
-                      <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-                        {item.description}
-                      </p>
-                    ) : null}
-                    {isManager ? (
-                      <AgendaDecideControls itemId={item.id} status={item.status} />
-                    ) : null}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        <h4 className="text-[15px] font-bold leading-snug">
+                          {item.title}
+                        </h4>
+                        <AgendaStatusBadge status={item.status} />
+                      </div>
+                      {item.description ? (
+                        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                          {item.description}
+                        </p>
+                      ) : null}
+
+                      {item.votable ? (
+                        <AgendaVote
+                          itemId={item.id}
+                          tally={tally}
+                          myChoice={myChoice}
+                          canVote={votingOpen && item.status !== "REJECTED"}
+                          note={
+                            eligibleToVote && !ended && !quorumOk
+                              ? `Brak kworum (${quorumPct}%) — głosowanie wstrzymane.`
+                              : item.status === "REJECTED" && !ended
+                                ? "Punkt odrzucony — głosowanie zamknięte."
+                                : undefined
+                          }
+                        />
+                      ) : (
+                        <p className="mt-3 text-xs text-muted-foreground">
+                          Punkt informacyjny — bez głosowania.
+                        </p>
+                      )}
+
+                      {isManager ? (
+                        <AgendaDecideControls
+                          itemId={item.id}
+                          status={item.status}
+                          ended={ended}
+                        />
+                      ) : null}
+
+                      <AgendaComments
+                        itemId={item.id}
+                        comments={comments}
+                        myInitials={myInitials}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
 
@@ -332,7 +421,7 @@ export default async function MeetingDetailPage({
                       </div>
                     </div>
                   </div>
-                  {isManager ? (
+                  {isManager && !ended ? (
                     <AttendanceToggle
                       meetingId={meeting.id}
                       memberId={p.id}

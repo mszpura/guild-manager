@@ -34,7 +34,7 @@ const meetingSelect = {
   endedAt: true,
   allowedRoles: { select: { role: { select: { id: true, name: true } } } },
   agendaItems: {
-    select: { id: true, title: true },
+    select: { id: true, title: true, votable: true },
     orderBy: { order: "asc" },
   },
 } as const;
@@ -47,7 +47,7 @@ type MeetingCardData = {
   location: string | null;
   endedAt: Date | null;
   allowedRoles: { role: { id: string; name: string } }[];
-  agendaItems: { id: string; title: string }[];
+  agendaItems: { id: string; title: string; votable: boolean }[];
 };
 
 export default async function MeetingsPage() {
@@ -253,6 +253,7 @@ function MeetingCard({
                 agendaItems: meeting.agendaItems.map((a) => ({
                   id: a.id,
                   title: a.title,
+                  votable: a.votable,
                 })),
                 roleIds: meeting.allowedRoles.map((r) => r.role.id),
               }}
