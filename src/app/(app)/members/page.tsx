@@ -73,7 +73,8 @@ export default async function MembersPage() {
         />
       ) : null}
 
-      <Table>
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Nazwisko</TableHead>
@@ -112,7 +113,8 @@ export default async function MembersPage() {
             </TableRow>
           ))}
         </TableBody>
-      </Table>
+        </Table>
+      </div>
     </div>
   );
 }

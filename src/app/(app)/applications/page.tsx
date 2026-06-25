@@ -76,7 +76,8 @@ export default async function ApplicationsPage() {
           Brak zgłoszeń.
         </p>
       ) : (
-        <Table>
+        <div className="overflow-hidden rounded-xl border bg-card">
+          <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Imię i nazwisko</TableHead>
@@ -149,7 +150,8 @@ export default async function ApplicationsPage() {
               </TableRow>
             ))}
           </TableBody>
-        </Table>
+          </Table>
+        </div>
       )}
     </div>
   );
