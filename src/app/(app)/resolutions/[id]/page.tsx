@@ -63,14 +63,26 @@ export default async function ResolutionDetailPage({
     // edycji (WRITE). To oni stanowią mianownik dla paska „ile jeszcze nie głosowało".
     prisma.member.findMany({
       where: { organizationId: orgId },
-      select: { role: { select: { isOwner: true, permissions: true } } },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        role: { select: { isOwner: true, permissions: true } },
+      },
+      orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
     }),
   ]);
   if (!resolution) notFound();
 
-  const eligibleCount = voters.filter((m) =>
+  const eligibleMembers = voters.filter((m) =>
     can(m.role, "RESOLUTIONS", "WRITE"),
-  ).length;
+  );
+  const eligibleCount = eligibleMembers.length;
+  // Uprawnieni, którzy jeszcze nie oddali głosu (lista pokazywana przy głosowaniu jawnym).
+  const votedMemberIds = new Set(resolution.votes.map((v) => v.memberId));
+  const notVotedMembers = eligibleMembers.filter(
+    (m) => !votedMemberIds.has(m.id),
+  );
   const tally = tallyVotes(resolution.votes);
   const myChoice =
     resolution.votes.find((v) => v.memberId === me.id)?.choice ?? null;
@@ -216,30 +228,56 @@ export default async function ResolutionDetailPage({
 
             {/* imienne głosy — tylko przy głosowaniu jawnym */}
             {showVoters ? (
-              resolution.votes.length > 0 ? (
-                <div className="mt-5 border-t pt-4">
-                  <p className="mb-2 text-[11px] font-bold tracking-wide text-muted-foreground">
-                    ODDANE GŁOSY · {resolution.votes.length}
-                  </p>
-                  <ul className="divide-y">
-                    {resolution.votes.map((v) => (
-                      <li
-                        key={v.memberId}
-                        className="flex items-center justify-between gap-3 py-2 text-sm"
-                      >
-                        <span className="font-medium">
-                          {v.member.firstName} {v.member.lastName ?? ""}
-                        </span>
-                        <span
-                          className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${VOTE_BADGE[v.choice]}`}
+              <>
+                {resolution.votes.length > 0 ? (
+                  <div className="mt-5 border-t pt-4">
+                    <p className="mb-2 text-[11px] font-bold tracking-wide text-muted-foreground">
+                      ODDANE GŁOSY · {resolution.votes.length}
+                    </p>
+                    <ul className="divide-y">
+                      {resolution.votes.map((v) => (
+                        <li
+                          key={v.memberId}
+                          className="flex items-center justify-between gap-3 py-2 text-sm"
                         >
-                          {VOTE_LABEL[v.choice]}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null
+                          <span className="font-medium">
+                            {v.member.firstName} {v.member.lastName ?? ""}
+                          </span>
+                          <span
+                            className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${VOTE_BADGE[v.choice]}`}
+                          >
+                            {VOTE_LABEL[v.choice]}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+
+                {/* uprawnieni, którzy jeszcze nie oddali głosu */}
+                {notVotedMembers.length > 0 ? (
+                  <div className="mt-5 border-t pt-4">
+                    <p className="mb-2 text-[11px] font-bold tracking-wide text-muted-foreground">
+                      JESZCZE NIE ODDALI GŁOSU · {notVotedMembers.length}
+                    </p>
+                    <ul className="divide-y">
+                      {notVotedMembers.map((m) => (
+                        <li
+                          key={m.id}
+                          className="flex items-center justify-between gap-3 py-2 text-sm"
+                        >
+                          <span className="font-medium text-muted-foreground">
+                            {m.firstName} {m.lastName ?? ""}
+                          </span>
+                          <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                            Nie głosował(a)
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </>
             ) : (
               <p className="mt-4 text-xs text-muted-foreground">
                 Głosowanie tajne — imienne głosy nie są ujawniane.
