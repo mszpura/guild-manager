@@ -44,6 +44,38 @@ export const MEMBER_PERMISSIONS: Permissions = {
   SETTINGS: "NONE",
 };
 
+// Dodatkowe role zarządu zakładane automatycznie przy tworzeniu stowarzyszenia,
+// aby użytkownicy nie musieli definiować ich ręcznie. Nie są systemowe — można je
+// dowolnie edytować lub usunąć w ustawieniach. Poniższe uprawnienia to rozsądne
+// wartości startowe (nie ograniczają niczego na stałe).
+export const VICE_PRESIDENT_PERMISSIONS: Permissions = {
+  // Wiceprezes zastępuje prezesa — pełny zapis w każdym obszarze.
+  MEMBERS: "WRITE",
+  APPLICATIONS: "WRITE",
+  MEETINGS: "WRITE",
+  RESOLUTIONS: "WRITE",
+  SETTINGS: "WRITE",
+};
+
+export const BOARD_MEMBER_PERMISSIONS: Permissions = {
+  // Członek Zarządu prowadzi bieżące sprawy, ustawienia tylko do odczytu.
+  MEMBERS: "WRITE",
+  APPLICATIONS: "WRITE",
+  MEETINGS: "WRITE",
+  RESOLUTIONS: "WRITE",
+  SETTINGS: "READ",
+};
+
+export const TREASURER_PERMISSIONS: Permissions = {
+  // Skarbnik: na razie takie same uprawnienia jak Członek Zarządu.
+  // Dedykowana zakładka skarbnika dojdzie w przyszłości.
+  MEMBERS: "WRITE",
+  APPLICATIONS: "WRITE",
+  MEETINGS: "WRITE",
+  RESOLUTIONS: "WRITE",
+  SETTINGS: "READ",
+};
+
 // Bezpiecznie odczytuje poziom dla obszaru z dowolnego JSON-a (domyślnie NONE).
 export function getLevel(permissions: unknown, area: Area): Level {
   if (permissions && typeof permissions === "object") {

@@ -11,7 +11,13 @@ import {
 } from "@/lib/validations";
 import { generateInviteToken } from "@/lib/tokens";
 import { requireMember } from "@/lib/tenant";
-import { OWNER_PERMISSIONS, MEMBER_PERMISSIONS } from "@/lib/permissions";
+import {
+  OWNER_PERMISSIONS,
+  MEMBER_PERMISSIONS,
+  VICE_PRESIDENT_PERMISSIONS,
+  BOARD_MEMBER_PERMISSIONS,
+  TREASURER_PERMISSIONS,
+} from "@/lib/permissions";
 
 export type FormState = { error?: string; ok?: boolean } | undefined;
 
@@ -119,6 +125,27 @@ export async function createOrganization(
         isSystem: true,
         isDefault: true,
       },
+    });
+    // Dodatkowe role zarządu zakładane od razu (edytowalne/usuwalne w ustawieniach),
+    // by użytkownicy nie musieli tworzyć ich ręcznie. Kolejność = kolejność na liście.
+    await tx.role.createMany({
+      data: [
+        {
+          organizationId: org.id,
+          name: "Wiceprezes",
+          permissions: VICE_PRESIDENT_PERMISSIONS,
+        },
+        {
+          organizationId: org.id,
+          name: "Skarbnik",
+          permissions: TREASURER_PERMISSIONS,
+        },
+        {
+          organizationId: org.id,
+          name: "Członek Zarządu",
+          permissions: BOARD_MEMBER_PERMISSIONS,
+        },
+      ],
     });
     // Twórca staje się członkiem z rolą Prezes (pojawia się na liście członków).
     await tx.member.create({
