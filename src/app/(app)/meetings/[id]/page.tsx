@@ -54,7 +54,7 @@ export default async function MeetingDetailPage({
 
   const me = await requireMember(orgId, "MEETINGS", "READ");
   const isManager = can(me.role, "MEETINGS", "WRITE");
-  const isOwner = me.role.isOwner; // tylko Właściciel może wznowić spotkanie
+  const isOwner = me.role.isOwner; // tylko Prezes może wznowić spotkanie
 
   const meeting = await prisma.meeting.findFirst({
     where: { id, organizationId: orgId },

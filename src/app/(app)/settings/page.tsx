@@ -181,7 +181,7 @@ export default async function SettingsPage() {
               <CardTitle>Role i uprawnienia</CardTitle>
               <CardDescription>
                 Zdefiniuj role i ich uprawnienia w poszczególnych obszarach.
-                Rola „Właściciel” ma zawsze pełnię praw; „Członek” jest nadawana
+                Rola „Prezes” ma zawsze pełnię praw; „Członek” jest nadawana
                 nowo zatwierdzonym członkom.
               </CardDescription>
             </CardHeader>

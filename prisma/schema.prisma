@@ -117,7 +117,7 @@ model Role {
   name        String
   permissions Json // { MEMBERS:"WRITE", APPLICATIONS:"READ", MEETINGS:"NONE", RESOLUTIONS:"NONE", SETTINGS:"NONE" }
   isOwner     Boolean  @default(false) // pełne uprawnienia, zablokowana do edycji/usuwania
-  isSystem    Boolean  @default(false) // Właściciel/Członek — nieusuwalne
+  isSystem    Boolean  @default(false) // Prezes/Członek — nieusuwalne
   isDefault   Boolean  @default(false) // rola nadawana zatwierdzonym zgłoszeniom (Członek)
   createdAt   DateTime @default(now())
 

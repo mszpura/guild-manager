@@ -131,7 +131,7 @@ export function AttendanceToggle({
 }
 
 // Zakończenie / wznowienie spotkania (tylko dla zarządzających).
-// Wznowić zakończone spotkanie może wyłącznie rola Właściciel (canReopen).
+// Wznowić zakończone spotkanie może wyłącznie rola Prezes (canReopen).
 export function EndMeetingButton({
   meetingId,
   ended,
@@ -161,7 +161,7 @@ export function EndMeetingButton({
     });
   }
 
-  // Zakończone spotkanie może wznowić tylko Właściciel — innym nie pokazujemy przycisku.
+  // Zakończone spotkanie może wznowić tylko Prezes — innym nie pokazujemy przycisku.
   if (ended) {
     return canReopen ? (
       <Button type="button" variant="outline" disabled={pending} onClick={run}>

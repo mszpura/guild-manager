@@ -101,11 +101,11 @@ export async function createOrganization(
     const org = await tx.organization.create({
       data: { name: parsed.data.name, slug, inviteToken: generateInviteToken() },
     });
-    // Dwie domyślne role: Właściciel (pełne, zablokowana) i Członek (domyślna).
+    // Dwie domyślne role: Prezes (pełne, zablokowana) i Członek (domyślna).
     const ownerRole = await tx.role.create({
       data: {
         organizationId: org.id,
-        name: "Właściciel",
+        name: "Prezes",
         permissions: OWNER_PERMISSIONS,
         isOwner: true,
         isSystem: true,
@@ -120,7 +120,7 @@ export async function createOrganization(
         isDefault: true,
       },
     });
-    // Twórca staje się członkiem z rolą Właściciel (pojawia się na liście członków).
+    // Twórca staje się członkiem z rolą Prezes (pojawia się na liście członków).
     await tx.member.create({
       data: {
         organizationId: org.id,

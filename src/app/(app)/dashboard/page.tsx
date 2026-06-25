@@ -8,6 +8,10 @@ import {
   attendableWhere,
   relativeDays,
 } from "@/lib/meetings";
+import {
+  RESOLUTION_STATUS_LABELS,
+  RESOLUTION_STATUS_BADGE,
+} from "@/lib/resolutions";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -54,6 +58,7 @@ export default async function DashboardPage() {
     upcomingMeetings,
     passedResolutions,
     lastResolution,
+    recentResolutions,
   ] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: orgId },
@@ -99,6 +104,21 @@ export default async function DashboardPage() {
       orderBy: { decidedAt: "desc" },
       select: { decidedAt: true },
     }),
+    canResolutions
+      ? prisma.resolution.findMany({
+          where: { organizationId: orgId },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+          select: {
+            id: true,
+            number: true,
+            title: true,
+            status: true,
+            openedAt: true,
+            decidedAt: true,
+          },
+        })
+      : Promise.resolve([]),
   ]);
 
   const nextMeeting = upcomingMeetings[0];
@@ -184,7 +204,72 @@ export default async function DashboardPage() {
 
       {/* dwie kolumny */}
       <div className="grid items-start gap-5 lg:grid-cols-[1.7fr_1fr]">
-        {/* lewa: realna lista członków */}
+        {/* lewa: ostatnie uchwały + lista członków */}
+        <div className="flex flex-col gap-5">
+        {canResolutions ? (
+          <div className="overflow-hidden rounded-xl border bg-card">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <h3 className="font-heading text-base font-bold">
+                Ostatnie uchwały
+              </h3>
+              <Link
+                href="/resolutions"
+                className="text-sm font-semibold text-primary"
+              >
+                Zobacz wszystkie →
+              </Link>
+            </div>
+            {recentResolutions.length === 0 ? (
+              <p className="p-8 text-center text-sm text-muted-foreground">
+                Brak uchwał.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>NR</TableHead>
+                    <TableHead>Tytuł</TableHead>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recentResolutions.map((r) => {
+                    const date =
+                      r.status === "DRAFT" ? null : (r.decidedAt ?? r.openedAt);
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-mono text-xs text-muted-foreground">
+                          {r.number}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          <Link
+                            href={`/resolutions/${r.id}`}
+                            className="hover:text-primary"
+                          >
+                            {r.title}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {date ? dateFmt.format(date) : "—"}
+                        </TableCell>
+                        <TableCell>
+                          <span
+                            className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${RESOLUTION_STATUS_BADGE[r.status]}`}
+                          >
+                            {RESOLUTION_STATUS_LABELS[r.status]}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        ) : null}
+
+        {/* realna lista członków */}
         {canMembers ? (
           <div className="overflow-hidden rounded-xl border bg-card">
             <div className="flex items-center justify-between border-b px-5 py-4">
@@ -234,6 +319,7 @@ export default async function DashboardPage() {
             )}
           </div>
         ) : null}
+        </div>
 
         {/* prawa: widgety przykładowe */}
         <div className="flex flex-col gap-5">

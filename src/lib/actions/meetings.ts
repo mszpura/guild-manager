@@ -294,7 +294,7 @@ export async function endMeeting(meetingId: string) {
   revalidateMeeting(meetingId);
 }
 
-// Wznawia zakończone spotkanie (czyści moment zakończenia). Tylko rola Właściciel.
+// Wznawia zakończone spotkanie (czyści moment zakończenia). Tylko rola Prezes.
 export async function reopenMeeting(meetingId: string) {
   const meeting = await prisma.meeting.findUnique({
     where: { id: meetingId },
@@ -304,7 +304,7 @@ export async function reopenMeeting(meetingId: string) {
 
   const me = await requireMember(meeting.organizationId);
   if (!me.role.isOwner) {
-    throw new Error("Tylko Właściciel może wznowić zakończone spotkanie.");
+    throw new Error("Tylko Prezes może wznowić zakończone spotkanie.");
   }
 
   await prisma.meeting.update({

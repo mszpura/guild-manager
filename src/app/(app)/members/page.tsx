@@ -35,7 +35,7 @@ export default async function MembersPage() {
     prisma.member.findMany({
       where: { organizationId: orgId },
       include: { role: { select: { name: true, isOwner: true } } },
-      // Właściciel na górze, potem alfabetycznie.
+      // Prezes na górze, potem alfabetycznie.
       orderBy: [
         { role: { isOwner: "desc" } },
         { lastName: "asc" },
