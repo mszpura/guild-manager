@@ -105,7 +105,7 @@ model Organization {
   applicationFields ApplicationField[]
   paymentTiers      PaymentTier[]
   meetings          Meeting[]
-  // Kolejne kroki dodadzą tu: resolutions — każdy z organizationId.
+  resolutions       Resolution[]
 }
 
 // Rola w stowarzyszeniu (konfigurowalna) + macierz uprawnień (JSON: obszar → poziom).
@@ -220,9 +220,10 @@ model Member {
   birthDate DateTime? // opcjonalne (założyciel nie wypełniał formularza)
   joinedAt  DateTime  @default(now())
 
-  attendances    MeetingAttendance[]
-  agendaComments AgendaComment[]
-  agendaVotes    AgendaVote[]
+  attendances     MeetingAttendance[]
+  agendaComments  AgendaComment[]
+  agendaVotes     AgendaVote[]
+  resolutionVotes ResolutionVote[]
 
   @@unique([organizationId, email]) // jeden e-mail = jeden członek danego stowarzyszenia
   @@index([organizationId])
@@ -348,4 +349,54 @@ model MeetingAttendance {
 
   @@unique([meetingId, memberId])
   @@index([meetingId])
+}
+
+// ─── Domena: uchwały (rejestr + głosowania online) ──────────────────────────
+
+enum ResolutionStatus {
+  DRAFT // Szkic — przygotowywana, brak głosowania
+  VOTING // W głosowaniu — zbieranie głosów online
+  PASSED // Przyjęta
+  REJECTED // Odrzucona
+}
+
+// Uchwała stowarzyszenia. Wynik wyznaczany z głosów przy zamknięciu głosowania.
+model Resolution {
+  id             String       @id @default(cuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  number  String // np. „5/2026" (unikalny w obrębie stowarzyszenia)
+  title   String
+  content String? // treść uchwały
+
+  // Tryb głosowania: jawne (widać, kto jak głosował) lub tajne.
+  secretBallot Boolean @default(false)
+
+  status   ResolutionStatus @default(DRAFT)
+  openedAt DateTime? // moment otwarcia głosowania
+  decidedAt DateTime? // moment rozstrzygnięcia (przyjęcia/odrzucenia)
+
+  votes ResolutionVote[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, number])
+  @@index([organizationId])
+}
+
+// Głos członka nad uchwałą (jeden głos na członka i uchwałę).
+model ResolutionVote {
+  id           String     @id @default(cuid())
+  resolution   Resolution @relation(fields: [resolutionId], references: [id], onDelete: Cascade)
+  resolutionId String
+  member       Member     @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId     String
+
+  choice    VoteChoice // FOR / AGAINST / ABSTAIN (wspólny enum z głosowaniem agendy)
+  createdAt DateTime   @default(now())
+
+  @@unique([resolutionId, memberId])
+  @@index([resolutionId])
 }

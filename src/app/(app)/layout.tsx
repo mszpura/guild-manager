@@ -66,7 +66,9 @@ export default async function AppLayout({
     ...(can(role, "MEETINGS", "READ")
       ? [{ href: "/meetings", label: "Spotkania", icon: CalendarClock, ready: true }]
       : []),
-    { href: "#", label: "Uchwały", icon: Gavel, ready: false },
+    ...(can(role, "RESOLUTIONS", "READ")
+      ? [{ href: "/resolutions", label: "Uchwały", icon: Gavel, ready: true }]
+      : []),
     ...(can(role, "SETTINGS", "WRITE")
       ? [{ href: "/settings", label: "Ustawienia", icon: Settings, ready: true }]
       : []),

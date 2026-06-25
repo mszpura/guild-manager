@@ -43,10 +43,18 @@ export default async function DashboardPage() {
   const role = data.active.role;
   const canMembers = can(role, "MEMBERS", "READ");
   const canMeetings = can(role, "MEETINGS", "READ");
+  const canResolutions = can(role, "RESOLUTIONS", "READ");
 
   const now = new Date();
 
-  const [org, memberCount, recentMembers, upcomingMeetings] = await Promise.all([
+  const [
+    org,
+    memberCount,
+    recentMembers,
+    upcomingMeetings,
+    passedResolutions,
+    lastResolution,
+  ] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: orgId },
       select: { name: true, krs: true },
@@ -83,6 +91,14 @@ export default async function DashboardPage() {
         },
       },
     }),
+    prisma.resolution.count({
+      where: { organizationId: orgId, status: "PASSED" },
+    }),
+    prisma.resolution.findFirst({
+      where: { organizationId: orgId, status: "PASSED" },
+      orderBy: { decidedAt: "desc" },
+      select: { decidedAt: true },
+    }),
   ]);
 
   const nextMeeting = upcomingMeetings[0];
@@ -118,17 +134,11 @@ export default async function DashboardPage() {
           </div>
         </Link>
 
-        <div className="rounded-xl border bg-card p-5">
-          <StatLabel>
-            UCHWAŁY 2026 <Demo />
-          </StatLabel>
-          <div className="font-heading text-3xl font-extrabold leading-none">
-            7
-          </div>
-          <div className="mt-2 text-xs text-muted-foreground">
-            Ostatnia: 12.03.2026
-          </div>
-        </div>
+        <ResolutionsStat
+          canResolutions={canResolutions}
+          passed={passedResolutions}
+          lastDecidedAt={lastResolution?.decidedAt ?? null}
+        />
 
         <div className="rounded-xl border bg-card p-5">
           <StatLabel>
@@ -300,6 +310,41 @@ export default async function DashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Karta statystyki uchwał (liczba przyjętych + data ostatniej). Link gdy dostępne.
+function ResolutionsStat({
+  canResolutions,
+  passed,
+  lastDecidedAt,
+}: {
+  canResolutions: boolean;
+  passed: number;
+  lastDecidedAt: Date | null;
+}) {
+  const inner = (
+    <>
+      <StatLabel>PRZYJĘTE UCHWAŁY</StatLabel>
+      <div className="font-heading text-3xl font-extrabold leading-none">
+        {passed}
+      </div>
+      <div className="mt-2 text-xs text-muted-foreground">
+        {lastDecidedAt
+          ? `Ostatnia: ${meetingDateFmt.format(lastDecidedAt)}`
+          : "Brak przyjętych uchwał"}
+      </div>
+    </>
+  );
+  return canResolutions ? (
+    <Link
+      href="/resolutions?status=passed"
+      className="rounded-xl border bg-card p-5 transition-colors hover:border-primary/50"
+    >
+      {inner}
+    </Link>
+  ) : (
+    <div className="rounded-xl border bg-card p-5">{inner}</div>
   );
 }
 

@@ -39,7 +39,8 @@ export const MEMBER_PERMISSIONS: Permissions = {
   MEMBERS: "READ",
   APPLICATIONS: "NONE",
   MEETINGS: "NONE",
-  RESOLUTIONS: "NONE",
+  // Członek widzi rejestr uchwał i może brać udział w głosowaniach online.
+  RESOLUTIONS: "READ",
   SETTINGS: "NONE",
 };
 

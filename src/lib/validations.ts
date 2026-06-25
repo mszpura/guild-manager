@@ -148,6 +148,27 @@ export const agendaItemSchema = z
   .trim()
   .max(300, "Punkt porządku obrad jest za długi.");
 
+// Walidacja formularza uchwały (numer, tytuł, treść).
+export const resolutionSchema = z.object({
+  number: z
+    .string()
+    .trim()
+    .min(1, "Podaj numer uchwały.")
+    .max(40, "Numer uchwały jest za długi."),
+  title: z
+    .string()
+    .trim()
+    .min(3, "Tytuł musi mieć co najmniej 3 znaki.")
+    .max(200, "Tytuł jest za długi."),
+  content: z
+    .string()
+    .trim()
+    .max(10000, "Treść uchwały jest za długa.")
+    .transform((v) => (v === "" ? null : v)),
+  // Pole z formularza: "secret" → głosowanie tajne, inaczej jawne.
+  secretBallot: z.preprocess((v) => v === "secret", z.boolean()),
+});
+
 // Komentarz do punktu porządku obrad.
 export const agendaCommentSchema = z
   .string()
