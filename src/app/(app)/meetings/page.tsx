@@ -241,23 +241,25 @@ function MeetingCard({
 
         {isManager ? (
           <div className="relative z-10 flex shrink-0 items-center">
-            <MeetingFormDialog
-              organizationId=""
-              roles={roles}
-              meeting={{
-                id: meeting.id,
-                title: meeting.title,
-                type: meeting.type,
-                startsAtValue: toDateTimeLocalValue(meeting.startsAt),
-                location: meeting.location ?? "",
-                agendaItems: meeting.agendaItems.map((a) => ({
-                  id: a.id,
-                  title: a.title,
-                  votable: a.votable,
-                })),
-                roleIds: meeting.allowedRoles.map((r) => r.role.id),
-              }}
-            />
+            {!ended ? (
+              <MeetingFormDialog
+                organizationId=""
+                roles={roles}
+                meeting={{
+                  id: meeting.id,
+                  title: meeting.title,
+                  type: meeting.type,
+                  startsAtValue: toDateTimeLocalValue(meeting.startsAt),
+                  location: meeting.location ?? "",
+                  agendaItems: meeting.agendaItems.map((a) => ({
+                    id: a.id,
+                    title: a.title,
+                    votable: a.votable,
+                  })),
+                  roleIds: meeting.allowedRoles.map((r) => r.role.id),
+                }}
+              />
+            ) : null}
             <MeetingDeleteButton meetingId={meeting.id} title={meeting.title} />
           </div>
         ) : null}

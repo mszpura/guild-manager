@@ -130,11 +130,15 @@ export async function updateMeeting(
 ): Promise<MeetingFormState> {
   const meeting = await prisma.meeting.findUnique({
     where: { id: meetingId },
-    select: { organizationId: true },
+    select: { organizationId: true, endedAt: true },
   });
   if (!meeting) return { error: "Spotkanie nie istnieje." };
 
   await requireMember(meeting.organizationId, "MEETINGS", "WRITE");
+
+  if (meeting.endedAt !== null) {
+    return { error: "Zakończonego spotkania nie można edytować." };
+  }
 
   const result = parseMeetingFields(formData);
   if (!result.success) {
@@ -290,7 +294,7 @@ export async function endMeeting(meetingId: string) {
   revalidateMeeting(meetingId);
 }
 
-// Wznawia zakończone spotkanie (czyści moment zakończenia). MEETINGS WRITE.
+// Wznawia zakończone spotkanie (czyści moment zakończenia). Tylko rola Właściciel.
 export async function reopenMeeting(meetingId: string) {
   const meeting = await prisma.meeting.findUnique({
     where: { id: meetingId },
@@ -298,7 +302,10 @@ export async function reopenMeeting(meetingId: string) {
   });
   if (!meeting) throw new Error("Spotkanie nie istnieje.");
 
-  await requireMember(meeting.organizationId, "MEETINGS", "WRITE");
+  const me = await requireMember(meeting.organizationId);
+  if (!me.role.isOwner) {
+    throw new Error("Tylko Właściciel może wznowić zakończone spotkanie.");
+  }
 
   await prisma.meeting.update({
     where: { id: meetingId },

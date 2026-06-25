@@ -75,7 +75,7 @@ export default async function AppLayout({
   return (
     <div className="flex min-h-svh flex-col">
       {/* górny app bar */}
-      <header className="sticky top-0 z-30 flex h-[62px] items-center justify-between border-b bg-card px-6">
+      <header className="sticky top-0 z-30 flex h-[62px] items-center justify-between border-b bg-card px-6 print:hidden">
         <div className="flex items-center gap-5">
           <Brand />
           <span className="h-6 w-px bg-border" />
@@ -90,7 +90,7 @@ export default async function AppLayout({
 
       <div className="flex flex-1">
         {/* sidebar */}
-        <aside className="sticky top-[62px] hidden h-[calc(100svh-62px)] w-[236px] shrink-0 overflow-y-auto border-r bg-sidebar p-4 md:block">
+        <aside className="sticky top-[62px] hidden h-[calc(100svh-62px)] w-[236px] shrink-0 overflow-y-auto border-r bg-sidebar p-4 md:block print:hidden">
           <p className="mb-3 px-3 text-[11px] font-bold tracking-[0.1em] text-muted-foreground">
             ZARZĄDZANIE
           </p>

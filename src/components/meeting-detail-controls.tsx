@@ -131,12 +131,15 @@ export function AttendanceToggle({
 }
 
 // Zakończenie / wznowienie spotkania (tylko dla zarządzających).
+// Wznowić zakończone spotkanie może wyłącznie rola Właściciel (canReopen).
 export function EndMeetingButton({
   meetingId,
   ended,
+  canReopen,
 }: {
   meetingId: string;
   ended: boolean;
+  canReopen: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -158,12 +161,17 @@ export function EndMeetingButton({
     });
   }
 
-  return ended ? (
-    <Button type="button" variant="outline" disabled={pending} onClick={run}>
-      <RotateCcw className="size-4" />
-      Wznów spotkanie
-    </Button>
-  ) : (
+  // Zakończone spotkanie może wznowić tylko Właściciel — innym nie pokazujemy przycisku.
+  if (ended) {
+    return canReopen ? (
+      <Button type="button" variant="outline" disabled={pending} onClick={run}>
+        <RotateCcw className="size-4" />
+        Wznów spotkanie
+      </Button>
+    ) : null;
+  }
+
+  return (
     <Button
       type="button"
       disabled={pending}

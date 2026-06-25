@@ -19,6 +19,7 @@ import {
   AgendaComments,
 } from "@/components/meeting-agenda-interactions";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { CalendarClock, Clock, MapPin, ChevronRight } from "lucide-react";
 
 const dateFmt = new Intl.DateTimeFormat("pl-PL", { dateStyle: "long" });
@@ -53,6 +54,7 @@ export default async function MeetingDetailPage({
 
   const me = await requireMember(orgId, "MEETINGS", "READ");
   const isManager = can(me.role, "MEETINGS", "WRITE");
+  const isOwner = me.role.isOwner; // tylko Właściciel może wznowić spotkanie
 
   const meeting = await prisma.meeting.findFirst({
     where: { id, organizationId: orgId },
@@ -195,26 +197,42 @@ export default async function MeetingDetailPage({
           </div>
         </div>
 
-        {isManager ? (
-          <div className="flex shrink-0 items-center gap-2">
-            <MeetingFormDialog
-              organizationId={orgId}
-              roles={roles}
-              meeting={{
-                id: meeting.id,
-                title: meeting.title,
-                type: meeting.type,
-                startsAtValue: toDateTimeLocalValue(meeting.startsAt),
-                location: meeting.location ?? "",
-                agendaItems: agenda.map((a) => ({
-                  id: a.id,
-                  title: a.title,
-                  votable: a.votable,
-                })),
-                roleIds: allowedRoleIds,
-              }}
-            />
-            <EndMeetingButton meetingId={meeting.id} ended={ended} />
+        {ended || isManager ? (
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {isManager && !ended ? (
+              <MeetingFormDialog
+                organizationId={orgId}
+                roles={roles}
+                editAsButton
+                meeting={{
+                  id: meeting.id,
+                  title: meeting.title,
+                  type: meeting.type,
+                  startsAtValue: toDateTimeLocalValue(meeting.startsAt),
+                  location: meeting.location ?? "",
+                  agendaItems: agenda.map((a) => ({
+                    id: a.id,
+                    title: a.title,
+                    votable: a.votable,
+                  })),
+                  roleIds: allowedRoleIds,
+                }}
+              />
+            ) : null}
+            {ended ? (
+              <Button asChild variant="outline">
+                <Link href={`/meetings/${meeting.id}/protokol`}>
+                  Pobierz protokół (PDF)
+                </Link>
+              </Button>
+            ) : null}
+            {isManager ? (
+              <EndMeetingButton
+                meetingId={meeting.id}
+                ended={ended}
+                canReopen={isOwner}
+              />
+            ) : null}
           </div>
         ) : null}
       </div>

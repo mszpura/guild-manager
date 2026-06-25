@@ -38,10 +38,13 @@ export function MeetingFormDialog({
   organizationId,
   roles,
   meeting,
+  editAsButton,
 }: {
   organizationId: string;
   roles: RoleOption[];
   meeting?: MeetingFormValues;
+  // W trybie edycji: zwykły przycisk z etykietą zamiast ikony (domyślnie ikona).
+  editAsButton?: boolean;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -97,9 +100,13 @@ export function MeetingFormDialog({
     >
       <DialogTrigger asChild>
         {meeting ? (
-          <Button variant="ghost" size="icon" aria-label="Edytuj spotkanie">
-            <Pencil className="size-4" />
-          </Button>
+          editAsButton ? (
+            <Button variant="outline">Edytuj spotkanie</Button>
+          ) : (
+            <Button variant="ghost" size="icon" aria-label="Edytuj spotkanie">
+              <Pencil className="size-4" />
+            </Button>
+          )
         ) : (
           <Button>
             <Plus className="size-4" />
