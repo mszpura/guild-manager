@@ -37,7 +37,7 @@ export default async function ResolutionDetailPage({
   const me = await requireMember(orgId, "RESOLUTIONS", "READ");
   const isManager = can(me.role, "RESOLUTIONS", "WRITE");
 
-  const [resolution, memberCount] = await Promise.all([
+  const [resolution, voters] = await Promise.all([
     prisma.resolution.findFirst({
       where: { id, organizationId: orgId },
       select: {
@@ -59,10 +59,18 @@ export default async function ResolutionDetailPage({
         },
       },
     }),
-    prisma.member.count({ where: { organizationId: orgId } }),
+    // Uprawnieni do głosowania = członkowie z dostępem do panelu Uchwały w trybie
+    // edycji (WRITE). To oni stanowią mianownik dla paska „ile jeszcze nie głosowało".
+    prisma.member.findMany({
+      where: { organizationId: orgId },
+      select: { role: { select: { isOwner: true, permissions: true } } },
+    }),
   ]);
   if (!resolution) notFound();
 
+  const eligibleCount = voters.filter((m) =>
+    can(m.role, "RESOLUTIONS", "WRITE"),
+  ).length;
   const tally = tallyVotes(resolution.votes);
   const myChoice =
     resolution.votes.find((v) => v.memberId === me.id)?.choice ?? null;
@@ -171,7 +179,7 @@ export default async function ResolutionDetailPage({
           <span className="text-xs text-muted-foreground">
             {isDraft
               ? "Nieotwarte"
-              : `${castCount} z ${memberCount} głosów`}
+              : `${castCount} z ${eligibleCount} głosów`}
           </span>
         </div>
 
@@ -187,6 +195,7 @@ export default async function ResolutionDetailPage({
               tally={tally}
               myChoice={myChoice}
               canVote={isVoting}
+              eligibleCount={eligibleCount}
             />
             {isDecided ? (
               <p className="mt-4 text-sm">

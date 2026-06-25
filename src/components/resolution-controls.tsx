@@ -52,11 +52,14 @@ export function ResolutionVoteButtons({
   tally,
   myChoice,
   canVote,
+  eligibleCount,
 }: {
   resolutionId: string;
   tally: { FOR: number; AGAINST: number; ABSTAIN: number };
   myChoice: Choice | null;
   canVote: boolean;
+  // Liczba uprawnionych do głosowania (członkowie z dostępem WRITE do Uchwał).
+  eligibleCount: number;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -72,8 +75,49 @@ export function ResolutionVoteButtons({
     });
   }
 
+  // Pasek frekwencji: ZA (zielony) / PRZECIW (czerwony) / WSTRZYM. (slate) oraz
+  // pozostała część toru w kolorze szarym = osoby, które jeszcze nie głosowały.
+  const voted = tally.FOR + tally.AGAINST + tally.ABSTAIN;
+  const notVoted = Math.max(0, eligibleCount - voted);
+  // Zabezpieczenie, gdyby liczba oddanych głosów przekroczyła liczbę uprawnionych.
+  const barTotal = Math.max(eligibleCount, voted);
+  const pct = (n: number) => (barTotal > 0 ? (n / barTotal) * 100 : 0);
+
   return (
     <div>
+      {barTotal > 0 ? (
+        <div className="mb-3 space-y-1.5">
+          <div className="flex h-2.5 overflow-hidden rounded-full bg-muted">
+            {tally.FOR > 0 ? (
+              <div
+                className="bg-emerald-500"
+                style={{ width: `${pct(tally.FOR)}%` }}
+                title={`Za: ${tally.FOR}`}
+              />
+            ) : null}
+            {tally.AGAINST > 0 ? (
+              <div
+                className="bg-red-500"
+                style={{ width: `${pct(tally.AGAINST)}%` }}
+                title={`Przeciw: ${tally.AGAINST}`}
+              />
+            ) : null}
+            {tally.ABSTAIN > 0 ? (
+              <div
+                className="bg-slate-400"
+                style={{ width: `${pct(tally.ABSTAIN)}%` }}
+                title={`Wstrzymujące się: ${tally.ABSTAIN}`}
+              />
+            ) : null}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            {notVoted > 0
+              ? `Jeszcze nie zagłosowało: ${notVoted} z ${eligibleCount}`
+              : `Wszyscy uprawnieni oddali głos (${eligibleCount}).`}
+          </p>
+        </div>
+      ) : null}
+
       <div className="flex gap-2">
         {VOTE_BOXES.map((b) => {
           const active = myChoice === b.choice;
