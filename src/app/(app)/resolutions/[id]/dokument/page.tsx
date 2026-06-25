@@ -3,6 +3,7 @@ import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { RESOLUTION_STATUS_LABELS, tallyVotes } from "@/lib/resolutions";
 import { ProtocolPrintBar } from "@/components/protocol-print-bar";
+import { OrgDocumentIdentity } from "@/components/org-document-identity";
 
 const dateFmt = new Intl.DateTimeFormat("pl-PL", { dateStyle: "long" });
 
@@ -37,7 +38,18 @@ export default async function ResolutionDocumentPage({
       secretBallot: true,
       openedAt: true,
       decidedAt: true,
-      organization: { select: { name: true } },
+      organization: {
+        select: {
+          name: true,
+          street: true,
+          postalCode: true,
+          city: true,
+          nip: true,
+          regon: true,
+          krs: true,
+          contactEmail: true,
+        },
+      },
       votes: {
         orderBy: { createdAt: "asc" },
         select: {
@@ -63,9 +75,7 @@ export default async function ResolutionDocumentPage({
 
       <div className="mx-auto max-w-3xl space-y-7 rounded-xl border bg-white p-8 text-[13px] leading-relaxed text-foreground print:border-0 print:p-0 sm:p-12">
         <header className="border-b pb-5 text-center">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {resolution.organization.name}
-          </div>
+          <OrgDocumentIdentity org={resolution.organization} />
           <h1 className="mt-3 font-heading text-2xl font-extrabold tracking-tight">
             Uchwała nr {resolution.number}
           </h1>

@@ -7,6 +7,7 @@ import {
   hasQuorum,
 } from "@/lib/meetings";
 import { ProtocolPrintBar } from "@/components/protocol-print-bar";
+import { OrgDocumentIdentity } from "@/components/org-document-identity";
 
 const dateFmt = new Intl.DateTimeFormat("pl-PL", { dateStyle: "long" });
 const timeFmt = new Intl.DateTimeFormat("pl-PL", {
@@ -43,7 +44,18 @@ export default async function MeetingProtocolPage({
       startsAt: true,
       endedAt: true,
       location: true,
-      organization: { select: { name: true } },
+      organization: {
+        select: {
+          name: true,
+          street: true,
+          postalCode: true,
+          city: true,
+          nip: true,
+          regon: true,
+          krs: true,
+          contactEmail: true,
+        },
+      },
       allowedRoles: { select: { role: { select: { id: true } } } },
       agendaItems: {
         orderBy: { order: "asc" },
@@ -101,9 +113,7 @@ export default async function MeetingProtocolPage({
       <div className="mx-auto max-w-3xl space-y-7 rounded-xl border bg-white p-8 text-[13px] leading-relaxed text-foreground print:border-0 print:p-0 sm:p-12">
         {/* nagłówek */}
         <header className="border-b pb-5 text-center">
-          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            {meeting.organization.name}
-          </div>
+          <OrgDocumentIdentity org={meeting.organization} />
           <h1 className="mt-3 font-heading text-2xl font-extrabold tracking-tight">
             Protokół
           </h1>
