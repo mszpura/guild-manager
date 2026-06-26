@@ -1,15 +1,10 @@
 "use client";
 
-import { useActionState, useEffect, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Trash2, Plus, Lock } from "lucide-react";
-import {
-  addRole,
-  updateRole,
-  deleteRole,
-  type RoleFormState,
-} from "@/lib/actions/roles";
+import { Lock, Pencil, Plus, Trash2 } from "lucide-react";
+import { addRole, updateRole, deleteRole } from "@/lib/actions/roles";
 import {
   AREAS,
   LEVELS,
@@ -17,10 +12,10 @@ import {
   LEVEL_LABELS,
   getLevel,
   type Area,
+  type Level,
 } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 
 type RoleItem = {
   id: string;
@@ -28,26 +23,65 @@ type RoleItem = {
   permissions: unknown;
   isOwner: boolean;
   isSystem: boolean;
+  memberCount: number;
 };
 
-// Pojedynczy select poziomu uprawnień dla obszaru.
-function PermSelect({
-  area,
-  value,
-  disabled,
-}: {
-  area: Area;
-  value: string;
-  disabled?: boolean;
-}) {
+// Kolory żetonów uprawnień wg poziomu dostępu — spójne z projektem „Associacion".
+const LEVEL_STYLE: Record<Level, { color: string; bg: string }> = {
+  WRITE: { color: "#2f7d4f", bg: "#e7f1ea" },
+  READ: { color: "#2f5fd0", bg: "#ecf1fc" },
+  NONE: { color: "#9aa3b8", bg: "#f1f3f8" },
+};
+
+// Polska odmiana rzeczownika „osoba" zależnie od liczby.
+function membersLabel(n: number): string {
+  if (n === 1) return "1 osoba";
+  const ones = n % 10;
+  const tens = n % 100;
+  if (ones >= 2 && ones <= 4 && !(tens >= 12 && tens <= 14)) return `${n} osoby`;
+  return `${n} osób`;
+}
+
+// Żeton jednego obszaru, pokolorowany poziomem dostępu danej roli.
+function PermPill({ area, level }: { area: Area; level: Level }) {
+  const s = LEVEL_STYLE[level];
   return (
-    <label className="flex flex-col gap-1 text-sm">
-      <span className="text-muted-foreground">{AREA_LABELS[area]}</span>
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold"
+      style={{ color: s.color, backgroundColor: s.bg }}
+      title={`${AREA_LABELS[area]}: ${LEVEL_LABELS[level]}`}
+    >
+      <span
+        className="size-1.5 rounded-full"
+        style={{ backgroundColor: s.color }}
+      />
+      {AREA_LABELS[area]}
+    </span>
+  );
+}
+
+// Pełen, czytelny rząd żetonów dla wszystkich obszarów — sedno tej zakładki.
+function PermPills({ permissions }: { permissions: unknown }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {AREAS.map((area) => (
+        <PermPill key={area} area={area} level={getLevel(permissions, area)} />
+      ))}
+    </div>
+  );
+}
+
+// Pojedynczy select poziomu uprawnień dla obszaru (tryb edycji).
+function PermSelect({ area, value }: { area: Area; value: Level }) {
+  return (
+    <label className="flex flex-col gap-1.5 text-sm">
+      <span className="text-xs font-semibold text-muted-foreground">
+        {AREA_LABELS[area]}
+      </span>
       <select
         name={`perm_${area}`}
         defaultValue={value}
-        disabled={disabled}
-        className="h-9 rounded-md border bg-transparent px-2 text-sm disabled:opacity-60"
+        className="h-9 rounded-md border bg-transparent px-2 text-sm focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
       >
         {LEVELS.map((l) => (
           <option key={l} value={l}>
@@ -59,38 +93,35 @@ function PermSelect({
   );
 }
 
-function PermGrid({
-  permissions,
-  disabled,
-}: {
-  permissions: unknown;
-  disabled?: boolean;
-}) {
+function PermGrid({ permissions }: { permissions: unknown }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
       {AREAS.map((area) => (
-        <PermSelect
-          key={area}
-          area={area}
-          value={getLevel(permissions, area)}
-          disabled={disabled}
-        />
+        <PermSelect key={area} area={area} value={getLevel(permissions, area)} />
       ))}
     </div>
   );
 }
 
-function RoleCard({ role }: { role: RoleItem }) {
+function RoleRow({ role }: { role: RoleItem }) {
   const router = useRouter();
-  const [state, formAction, pending] = useActionState<RoleFormState, FormData>(
-    updateRole.bind(null, role.id),
-    undefined,
-  );
+  const [editing, setEditing] = useState(false);
+  const [error, setError] = useState<string>();
+  const [pending, startSave] = useTransition();
   const [deleting, startDelete] = useTransition();
 
-  useEffect(() => {
-    if (state?.ok) toast.success("Zapisano rolę.");
-  }, [state]);
+  function save(formData: FormData) {
+    startSave(async () => {
+      const res = await updateRole(role.id, undefined, formData);
+      if (res?.error) {
+        setError(res.error);
+        return;
+      }
+      setError(undefined);
+      setEditing(false);
+      toast.success("Zapisano rolę.");
+    });
+  }
 
   function remove() {
     startDelete(async () => {
@@ -104,95 +135,175 @@ function RoleCard({ role }: { role: RoleItem }) {
     });
   }
 
-  return (
-    <form action={formAction} className="space-y-3 rounded-md border p-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+  if (editing) {
+    return (
+      <form
+        action={save}
+        className="space-y-4 border-b bg-muted/30 px-6 py-5 last:border-b-0"
+      >
+        <div className="flex items-center justify-between gap-3">
           {role.isSystem ? (
-            <span className="font-medium">{role.name}</span>
+            <span className="text-sm font-bold text-foreground">{role.name}</span>
           ) : (
             <Input
               name="name"
               defaultValue={role.name}
-              className="h-8 w-48"
+              className="h-9 w-56"
               aria-label="Nazwa roli"
             />
           )}
-          {role.isOwner ? (
-            <Badge variant="secondary" className="gap-1 text-[10px]">
-              <Lock className="size-3" /> pełne uprawnienia
-            </Badge>
-          ) : role.isSystem ? (
-            <Badge variant="secondary" className="text-[10px]">
-              systemowa
-            </Badge>
+          {!role.isSystem ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={remove}
+              disabled={deleting}
+              aria-label={`Usuń rolę ${role.name}`}
+            >
+              <Trash2 className="size-4" />
+            </Button>
           ) : null}
         </div>
-        {!role.isSystem ? (
+
+        <PermGrid permissions={role.permissions} />
+
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
+
+        <div className="flex items-center gap-2">
+          <Button type="submit" size="sm" disabled={pending}>
+            {pending ? "Zapisywanie…" : "Zapisz"}
+          </Button>
           <Button
             type="button"
             variant="ghost"
-            size="icon"
-            onClick={remove}
-            disabled={deleting}
-            aria-label={`Usuń rolę ${role.name}`}
+            size="sm"
+            onClick={() => {
+              setError(undefined);
+              setEditing(false);
+            }}
           >
-            <Trash2 className="size-4" />
+            Anuluj
           </Button>
-        ) : null}
+        </div>
+      </form>
+    );
+  }
+
+  return (
+    <div className="flex items-start justify-between gap-4 border-b px-6 py-4 transition-colors last:border-b-0 hover:bg-muted/40">
+      <div className="w-44 shrink-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-sm font-bold text-foreground">{role.name}</span>
+          {role.isOwner ? (
+            <Lock className="size-3.5 text-muted-foreground" />
+          ) : null}
+        </div>
+        <div className="mt-0.5 text-xs text-muted-foreground">
+          {membersLabel(role.memberCount)}
+          {role.isSystem && !role.isOwner ? " · systemowa" : ""}
+        </div>
       </div>
 
-      <PermGrid permissions={role.permissions} disabled={role.isOwner} />
+      <div className="min-w-0 flex-1">
+        <PermPills permissions={role.permissions} />
+      </div>
 
-      {state?.error ? (
-        <p className="text-sm text-destructive">{state.error}</p>
-      ) : null}
+      {role.isOwner ? (
+        <span className="shrink-0 text-sm font-medium text-muted-foreground">
+          pełny dostęp
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold text-primary hover:underline"
+        >
+          <Pencil className="size-3.5" />
+          Edytuj
+        </button>
+      )}
+    </div>
+  );
+}
 
-      {!role.isOwner ? (
+function AddRoleRow({
+  organizationId,
+  onDone,
+  onCancel,
+}: {
+  organizationId: string;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const router = useRouter();
+  const [error, setError] = useState<string>();
+  const [pending, startAdd] = useTransition();
+
+  function add(formData: FormData) {
+    startAdd(async () => {
+      const res = await addRole(organizationId, undefined, formData);
+      if (res?.error) {
+        setError(res.error);
+        return;
+      }
+      router.refresh();
+      toast.success("Dodano rolę.");
+      onDone();
+    });
+  }
+
+  return (
+    <form
+      action={add}
+      className="space-y-4 border-b bg-accent/40 px-6 py-5 last:border-b-0"
+    >
+      <Input
+        name="name"
+        placeholder="Nazwa nowej roli (np. Skarbnik)"
+        className="h-9 w-64"
+        required
+        autoFocus
+      />
+      <PermGrid permissions={{}} />
+      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      <div className="flex items-center gap-2">
         <Button type="submit" size="sm" disabled={pending}>
-          {pending ? "Zapisywanie…" : "Zapisz"}
+          {pending ? "Dodawanie…" : "Dodaj rolę"}
         </Button>
-      ) : null}
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+          Anuluj
+        </Button>
+      </div>
     </form>
   );
 }
 
-function AddRoleCard({ organizationId }: { organizationId: string }) {
-  const router = useRouter();
-  const [state, formAction, pending] = useActionState<RoleFormState, FormData>(
-    addRole.bind(null, organizationId),
-    undefined,
-  );
-
-  useEffect(() => {
-    if (state?.ok) {
-      router.refresh();
-      toast.success("Dodano rolę.");
-    }
-  }, [state, router]);
-
+// Legenda poziomów dostępu — odwzorowuje kolory żetonów.
+function Legend() {
+  const items: { level: Level; label: string }[] = [
+    { level: "WRITE", label: "Odczyt i zapis" },
+    { level: "READ", label: "Tylko odczyt" },
+    { level: "NONE", label: "Brak dostępu" },
+  ];
   return (
-    <form
-      action={formAction}
-      className="space-y-3 rounded-md border border-dashed p-4"
-    >
-      <div className="flex items-center gap-2">
-        <Input
-          name="name"
-          placeholder="Nazwa nowej roli (np. Skarbnik)"
-          className="h-8 w-64"
-          required
-        />
-      </div>
-      <PermGrid permissions={{}} />
-      {state?.error ? (
-        <p className="text-sm text-destructive">{state.error}</p>
-      ) : null}
-      <Button type="submit" size="sm" disabled={pending}>
-        <Plus className="size-4" />
-        Dodaj rolę
-      </Button>
-    </form>
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t bg-muted/40 px-6 py-3.5">
+      <span className="text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
+        Poziom dostępu
+      </span>
+      {items.map(({ level, label }) => (
+        <div
+          key={level}
+          className="flex items-center gap-2 text-xs text-secondary-foreground"
+        >
+          <span
+            className="size-2 rounded-full"
+            style={{ backgroundColor: LEVEL_STYLE[level].color }}
+          />
+          {label}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -203,12 +314,44 @@ export function RolesManager({
   organizationId: string;
   roles: RoleItem[];
 }) {
+  const [adding, setAdding] = useState(false);
+
   return (
-    <div className="space-y-4">
+    <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="flex items-center justify-between gap-4 border-b px-6 py-5">
+        <div>
+          <h3 className="font-heading text-base font-bold text-foreground">
+            Role i uprawnienia
+          </h3>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Określ poziom dostępu każdej roli do poszczególnych obszarów
+            platformy.
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => setAdding(true)}
+          disabled={adding}
+        >
+          <Plus className="size-4" />
+          Dodaj rolę
+        </Button>
+      </div>
+
       {roles.map((role) => (
-        <RoleCard key={role.id} role={role} />
+        <RoleRow key={role.id} role={role} />
       ))}
-      <AddRoleCard organizationId={organizationId} />
+
+      {adding ? (
+        <AddRoleRow
+          organizationId={organizationId}
+          onDone={() => setAdding(false)}
+          onCancel={() => setAdding(false)}
+        />
+      ) : null}
+
+      <Legend />
     </div>
   );
 }

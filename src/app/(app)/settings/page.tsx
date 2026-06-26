@@ -68,6 +68,7 @@ export default async function SettingsPage() {
         permissions: true,
         isOwner: true,
         isSystem: true,
+        _count: { select: { members: true } },
       },
     }),
   ]);
@@ -182,19 +183,17 @@ export default async function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="roles">
-          <Card>
-            <CardHeader>
-              <CardTitle>Role i uprawnienia</CardTitle>
-              <CardDescription>
-                Zdefiniuj role i ich uprawnienia w poszczególnych obszarach.
-                Rola „Prezes” ma zawsze pełnię praw; „Członek” jest nadawana
-                nowo zatwierdzonym członkom.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <RolesManager organizationId={orgId} roles={roles} />
-            </CardContent>
-          </Card>
+          <RolesManager
+            organizationId={orgId}
+            roles={roles.map((r) => ({
+              id: r.id,
+              name: r.name,
+              permissions: r.permissions,
+              isOwner: r.isOwner,
+              isSystem: r.isSystem,
+              memberCount: r._count.members,
+            }))}
+          />
         </TabsContent>
       </Tabs>
     </div>
