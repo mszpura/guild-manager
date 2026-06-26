@@ -7,7 +7,13 @@ import { Button } from "@/components/ui/button";
 
 // Pasek narzędzi protokołu — niewidoczny w wydruku (print:hidden).
 // Po wejściu na stronę otwiera okno wydruku (Zapisz jako PDF).
-export function ProtocolPrintBar({ backHref }: { backHref: string }) {
+export function ProtocolPrintBar({
+  backHref,
+  backLabel = "Wróć do spotkania",
+}: {
+  backHref: string;
+  backLabel?: string;
+}) {
   const printed = useRef(false);
 
   useEffect(() => {
@@ -22,7 +28,7 @@ export function ProtocolPrintBar({ backHref }: { backHref: string }) {
       <Button asChild variant="ghost" size="sm">
         <Link href={backHref}>
           <ArrowLeft className="size-4" />
-          Wróć do spotkania
+          {backLabel}
         </Link>
       </Button>
       <Button type="button" size="sm" onClick={() => window.print()}>
