@@ -8,9 +8,11 @@ import {
   setMembershipPaid,
   addPaymentTier,
   deletePaymentTier,
+  setFeeDueDate,
   type TierFormState,
 } from "@/lib/actions/payments";
 import { formatPLN } from "@/lib/money";
+import { MONTHS_NOM, formatFeeDueDate } from "@/lib/payments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
@@ -21,10 +23,14 @@ export function PaymentSettings({
   organizationId,
   membershipPaid,
   tiers,
+  feeDueMonth,
+  feeDueDay,
 }: {
   organizationId: string;
   membershipPaid: boolean;
   tiers: Tier[];
+  feeDueMonth: number | null;
+  feeDueDay: number | null;
 }) {
   const router = useRouter();
   const [busy, startBusy] = useTransition();
@@ -61,8 +67,85 @@ export function PaymentSettings({
       </div>
 
       {membershipPaid ? (
-        <TierManager organizationId={organizationId} tiers={tiers} />
+        <>
+          <FeeDueDateForm
+            organizationId={organizationId}
+            feeDueMonth={feeDueMonth}
+            feeDueDay={feeDueDay}
+          />
+          <TierManager organizationId={organizationId} tiers={tiers} />
+        </>
       ) : null}
+    </div>
+  );
+}
+
+// Roczny termin opłacenia składki (dzień + miesiąc). Obsługujemy tylko składki roczne.
+const inputClass =
+  "h-10 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+
+function FeeDueDateForm({
+  organizationId,
+  feeDueMonth,
+  feeDueDay,
+}: {
+  organizationId: string;
+  feeDueMonth: number | null;
+  feeDueDay: number | null;
+}) {
+  const action = setFeeDueDate.bind(null, organizationId);
+  const [state, formAction, pending] = useActionState<TierFormState, FormData>(
+    action,
+    undefined,
+  );
+
+  useEffect(() => {
+    if (state?.ok) toast.success("Zapisano termin opłacenia składki.");
+  }, [state]);
+
+  const current = formatFeeDueDate(feeDueMonth, feeDueDay);
+
+  return (
+    <div className="space-y-3 border-t pt-6">
+      <div>
+        <h3 className="text-sm font-medium">Termin opłacenia składki</h3>
+        <p className="text-sm text-muted-foreground">
+          Coroczny termin wniesienia składki (obsługujemy tylko składki roczne).
+          {current ? ` Obecnie: ${current}.` : " Obecnie nieustawiony."}
+        </p>
+      </div>
+      <form action={formAction} className="flex flex-wrap items-end gap-3">
+        <Field className="w-24">
+          <FieldLabel htmlFor="feeDueDay">Dzień</FieldLabel>
+          <Input
+            id="feeDueDay"
+            name="feeDueDay"
+            inputMode="numeric"
+            placeholder="31"
+            defaultValue={feeDueDay ?? ""}
+          />
+        </Field>
+        <Field className="w-44">
+          <FieldLabel htmlFor="feeDueMonth">Miesiąc</FieldLabel>
+          <select
+            id="feeDueMonth"
+            name="feeDueMonth"
+            defaultValue={feeDueMonth ?? ""}
+            className={inputClass}
+          >
+            <option value="">—</option>
+            {MONTHS_NOM.map((label, i) => (
+              <option key={label} value={i + 1}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Button type="submit" disabled={pending} className="mb-0.5">
+          Zapisz termin
+        </Button>
+      </form>
+      {state?.error ? <FieldError>{state.error}</FieldError> : null}
     </div>
   );
 }

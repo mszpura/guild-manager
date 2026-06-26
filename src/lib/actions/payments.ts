@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireMember } from "@/lib/tenant";
 import { paymentTierLabelSchema } from "@/lib/validations";
 import { parsePLN } from "@/lib/money";
+import { isValidFeeDueDate } from "@/lib/payments";
 
 export type TierFormState = { error?: string; ok?: boolean } | undefined;
 
@@ -19,6 +20,41 @@ export async function setMembershipPaid(
     data: { membershipPaid: paid },
   });
   revalidatePath("/settings");
+}
+
+// Ustawia (lub czyści) roczny termin opłacenia składki. OWNER/BOARD.
+export async function setFeeDueDate(
+  organizationId: string,
+  _prev: TierFormState,
+  formData: FormData,
+): Promise<TierFormState> {
+  await requireMember(organizationId, "SETTINGS", "WRITE");
+
+  const monthRaw = String(formData.get("feeDueMonth") ?? "").trim();
+  const dayRaw = String(formData.get("feeDueDay") ?? "").trim();
+
+  // Oba puste → wyczyść termin.
+  if (monthRaw === "" && dayRaw === "") {
+    await prisma.organization.update({
+      where: { id: organizationId },
+      data: { feeDueMonth: null, feeDueDay: null },
+    });
+    revalidatePath("/settings");
+    return { ok: true };
+  }
+
+  const month = Number(monthRaw);
+  const day = Number(dayRaw);
+  if (!isValidFeeDueDate(month, day)) {
+    return { error: "Podaj poprawny termin — dzień i miesiąc." };
+  }
+
+  await prisma.organization.update({
+    where: { id: organizationId },
+    data: { feeDueMonth: month, feeDueDay: day },
+  });
+  revalidatePath("/settings");
+  return { ok: true };
 }
 
 // Dodaje próg składki. OWNER/BOARD.

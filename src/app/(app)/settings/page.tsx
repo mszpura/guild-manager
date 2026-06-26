@@ -50,6 +50,8 @@ export default async function SettingsPage() {
         description: true,
         logoUrl: true,
         membershipPaid: true,
+        feeDueMonth: true,
+        feeDueDay: true,
       },
     }),
     prisma.paymentTier.findMany({
@@ -172,6 +174,8 @@ export default async function SettingsPage() {
                 organizationId={orgId}
                 membershipPaid={org?.membershipPaid ?? false}
                 tiers={tiers}
+                feeDueMonth={org?.feeDueMonth ?? null}
+                feeDueDay={org?.feeDueDay ?? null}
               />
             </CardContent>
           </Card>

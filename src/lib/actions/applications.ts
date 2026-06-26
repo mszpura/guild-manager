@@ -85,6 +85,10 @@ export async function submitApplication(
 
   // Czy zgłoszenie wymaga płatności (płatne członkostwo + zdefiniowane progi).
   const paid = org.membershipPaid && org.paymentTiers.length > 0;
+  // Zgłaszający może pominąć płatność online (opłaci przelewem lub ma już opłacone).
+  const skipPayment = formData.get("skipPayment") === "on";
+  // Płatność online prowadzimy tylko, gdy składka wymagana i niepominięta.
+  const onlinePayment = paid && !skipPayment;
 
   let tier: { id: string; label: string; amount: number } | undefined;
   if (paid) {
@@ -94,7 +98,7 @@ export async function submitApplication(
       return { error: "Wybierz próg składki." };
     }
     // Płatność włączona, ale brak skonfigurowanego Stripe → nie blokuj 500-tką.
-    if (!getStripe()) {
+    if (onlinePayment && !getStripe()) {
       return {
         error:
           "Płatności nie są obecnie skonfigurowane. Skontaktuj się z administratorem.",
@@ -110,14 +114,16 @@ export async function submitApplication(
       email,
       birthDate,
       customData: customData.length > 0 ? customData : undefined,
+      // Pominięcie płatności online pozostawia status „oczekuje" — administrator
+      // potwierdza wpłatę (np. przelew) przy rozpatrywaniu zgłoszenia.
       paymentStatus: paid ? PaymentStatus.PENDING : PaymentStatus.NOT_REQUIRED,
       paymentTierLabel: tier?.label,
       paymentAmount: tier?.amount,
     },
   });
 
-  // Bezpłatne członkostwo — koniec, zgłoszenie czeka na rozpatrzenie.
-  if (!paid || !tier) {
+  // Bezpłatne członkostwo lub płatność pominięta — koniec, zgłoszenie czeka na rozpatrzenie.
+  if (!onlinePayment || !tier) {
     return { ok: true };
   }
 

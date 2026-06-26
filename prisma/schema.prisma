@@ -101,6 +101,10 @@ model Organization {
 
   // Składki członkowskie.
   membershipPaid Boolean @default(false)
+  // Roczny termin opłacenia składki — powtarzalny co roku dzień + miesiąc.
+  // Na razie obsługujemy wyłącznie składki roczne.
+  feeDueMonth    Int? // 1–12
+  feeDueDay      Int? // 1–31 (zależnie od miesiąca)
 
   members           Member[]
   roles             Role[]

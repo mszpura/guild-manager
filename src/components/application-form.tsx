@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { CheckCircle2 } from "lucide-react";
 import {
   submitApplication,
@@ -32,6 +32,9 @@ export function ApplicationForm({
     ApplicationFormState,
     FormData
   >(action, undefined);
+  // Zgłaszający deklaruje opłatę offline (przelew / już opłacona) — pomijamy płatność online.
+  const [skipPayment, setSkipPayment] = useState(false);
+  const hasPayment = paid && tiers.length > 0;
 
   if (state?.ok) {
     return (
@@ -79,34 +82,53 @@ export function ApplicationForm({
         </Field>
       ))}
 
-      {paid && tiers.length > 0 ? (
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">Próg składki *</legend>
-          {tiers.map((t, i) => (
-            <label
-              key={t.id}
-              className="flex items-center gap-3 rounded-md border px-3 py-2"
-            >
-              <input
-                type="radio"
-                name="paymentTier"
-                value={t.id}
-                required
-                defaultChecked={i === 0}
-                className="size-4"
-              />
-              <span className="flex-1">{t.label}</span>
-              <span className="font-medium">{formatPLN(t.amount)}</span>
-            </label>
-          ))}
-        </fieldset>
+      {hasPayment ? (
+        <>
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">Próg składki *</legend>
+            {tiers.map((t, i) => (
+              <label
+                key={t.id}
+                className="flex items-center gap-3 rounded-md border px-3 py-2"
+              >
+                <input
+                  type="radio"
+                  name="paymentTier"
+                  value={t.id}
+                  required
+                  defaultChecked={i === 0}
+                  className="size-4"
+                />
+                <span className="flex-1">{t.label}</span>
+                <span className="font-medium">{formatPLN(t.amount)}</span>
+              </label>
+            ))}
+          </fieldset>
+
+          <label className="flex items-start gap-3 rounded-md border bg-muted/30 px-3 py-2.5">
+            <input
+              type="checkbox"
+              name="skipPayment"
+              checked={skipPayment}
+              onChange={(e) => setSkipPayment(e.target.checked)}
+              className="mt-0.5 size-4"
+            />
+            <span className="text-sm">
+              Składkę opłacę przelewem lub mam ją już opłaconą — pomiń płatność
+              online.
+              <span className="mt-0.5 block text-xs text-muted-foreground">
+                Administrator potwierdzi wpłatę przy rozpatrywaniu zgłoszenia.
+              </span>
+            </span>
+          </label>
+        </>
       ) : null}
 
       {state?.error ? <FieldError>{state.error}</FieldError> : null}
       <Button type="submit" disabled={pending} className="w-full">
         {pending
           ? "Przetwarzanie…"
-          : paid && tiers.length > 0
+          : hasPayment && !skipPayment
             ? "Przejdź do płatności"
             : "Wyślij zgłoszenie"}
       </Button>
