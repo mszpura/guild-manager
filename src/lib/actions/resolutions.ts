@@ -5,14 +5,17 @@ import { prisma } from "@/lib/prisma";
 import { requireMember } from "@/lib/tenant";
 import { resolutionSchema } from "@/lib/validations";
 import { tallyVotes, voteOutcome } from "@/lib/resolutions";
-import { Prisma, VoteChoice } from "@/generated/prisma/client";
+import { Prisma, VoteChoice, SignatureRole } from "@/generated/prisma/client";
 
 export type ResolutionFormState = { error?: string; ok?: boolean } | undefined;
 
 function revalidateResolution(resolutionId?: string) {
   revalidatePath("/resolutions");
   revalidatePath("/dashboard");
-  if (resolutionId) revalidatePath(`/resolutions/${resolutionId}`);
+  if (resolutionId) {
+    revalidatePath(`/resolutions/${resolutionId}`);
+    revalidatePath(`/resolutions/${resolutionId}/dokument`);
+  }
 }
 
 function parseFields(formData: FormData) {
@@ -219,5 +222,55 @@ export async function castResolutionVote(
       update: { choice },
     });
   }
+  revalidateResolution(resolutionId);
+}
+
+// Składa podpis pod zatwierdzoną uchwałą w wybranej roli (tytule). Reguły:
+//  • podpisać można tylko uchwałę przyjętą (PASSED),
+//  • jeden członek podpisuje daną uchwałę najwyżej raz,
+//  • każdy tytuł (Przewodniczący/Protokolant) obsadzany najwyżej raz.
+// Wymaga RESOLUTIONS READ (podpisują członkowie, nie tylko zarząd).
+export async function signResolution(
+  resolutionId: string,
+  role: SignatureRole,
+) {
+  const resolution = await prisma.resolution.findUnique({
+    where: { id: resolutionId },
+    select: { organizationId: true, status: true },
+  });
+  if (!resolution) throw new Error("Uchwała nie istnieje.");
+
+  const me = await requireMember(resolution.organizationId, "RESOLUTIONS", "READ");
+
+  if (resolution.status !== "PASSED") {
+    throw new Error("Podpisać można tylko zatwierdzoną uchwałę.");
+  }
+
+  // Czytelne komunikaty przed wstawieniem; unikaty w bazie pozostają twardym zabezpieczeniem.
+  const existing = await prisma.resolutionSignature.findMany({
+    where: { resolutionId },
+    select: { memberId: true, role: true },
+  });
+  if (existing.some((s) => s.memberId === me.id)) {
+    throw new Error("Już podpisałeś(-aś) tę uchwałę.");
+  }
+  if (existing.some((s) => s.role === role)) {
+    throw new Error("Ten podpis został już złożony przez inną osobę.");
+  }
+
+  const signerName = [me.firstName, me.lastName].filter(Boolean).join(" ").trim();
+
+  try {
+    await prisma.resolutionSignature.create({
+      data: { resolutionId, memberId: me.id, role, signerName },
+    });
+  } catch (e) {
+    // Wyścig: unikat dopilnuje, że nie powstaną dwa podpisy tego samego członka/tytułu.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      throw new Error("Ten podpis został już złożony.");
+    }
+    throw e;
+  }
+
   revalidateResolution(resolutionId);
 }

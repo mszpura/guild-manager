@@ -10,6 +10,7 @@ export type OrgDocumentInfo = {
   regon?: string | null;
   krs?: string | null;
   contactEmail?: string | null;
+  logoUrl?: string | null;
 };
 
 export function OrgDocumentIdentity({ org }: { org: OrgDocumentInfo }) {
@@ -30,6 +31,13 @@ export function OrgDocumentIdentity({ org }: { org: OrgDocumentInfo }) {
 
   return (
     <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      {org.logoUrl ? (
+        <img
+          src={org.logoUrl}
+          alt=""
+          className="mx-auto mb-2 h-14 w-auto max-w-[180px] object-contain [-webkit-print-color-adjust:exact] [print-color-adjust:exact]"
+        />
+      ) : null}
       {org.name}
       {address ? (
         <div className="mt-0.5 font-normal normal-case">{address}</div>

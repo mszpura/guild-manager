@@ -30,6 +30,13 @@ export default async function AppLayout({
   const { members, active } = data;
   const role = active.role;
 
+  // Logo aktywnego stowarzyszenia — pobierane osobno, by nie obciążać lekkiego
+  // payloadu przełącznika (data URL bywa duży) logami wszystkich członkostw.
+  const activeOrg = await prisma.organization.findUnique({
+    where: { id: active.organizationId },
+    select: { logoUrl: true },
+  });
+
   // Widoczność sekcji wg uprawnień roli (jak menu boczne).
   const canApplications = can(role, "APPLICATIONS", "READ");
   const pendingCount = canApplications
@@ -81,7 +88,11 @@ export default async function AppLayout({
         <div className="flex items-center gap-5">
           <Brand />
           <span className="h-6 w-px bg-border" />
-          <OrgSwitcher members={members} activeId={active.organizationId} />
+          <OrgSwitcher
+            members={members}
+            activeId={active.organizationId}
+            activeLogoUrl={activeOrg?.logoUrl ?? null}
+          />
         </div>
         <UserMenu
           name={session?.user?.name}

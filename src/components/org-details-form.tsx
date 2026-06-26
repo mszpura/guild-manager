@@ -1,12 +1,16 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   updateOrganizationDetails,
   type FormState,
 } from "@/lib/actions/organization";
-import { organizationDetailsSchema } from "@/lib/validations";
+import {
+  organizationDetailsSchema,
+  validateLogoFile,
+  LOGO_ACCEPT_ATTR,
+} from "@/lib/validations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
@@ -23,6 +27,7 @@ type OrgDetails = {
   postalCode: string | null;
   city: string | null;
   description: string | null;
+  logoUrl: string | null;
 };
 
 const inputClass =
@@ -43,9 +48,36 @@ export function OrgDetailsForm({
   // schematem co serwer, więc gdy przejdzie tu, przejdzie też po stronie serwera.
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Logo: podgląd (data URL lub createObjectURL), znacznik usunięcia oraz błąd pliku.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(org.logoUrl);
+  const [logoRemoved, setLogoRemoved] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
+
   useEffect(() => {
     if (state?.ok) toast.success("Zapisano dane stowarzyszenia.");
   }, [state]);
+
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const err = validateLogoFile(file);
+    if (err) {
+      setLogoError(err);
+      e.target.value = "";
+      return;
+    }
+    setLogoError(null);
+    setLogoRemoved(false);
+    setLogoPreview(URL.createObjectURL(file));
+  }
+
+  function removeLogo() {
+    setLogoPreview(null);
+    setLogoRemoved(true);
+    setLogoError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
 
   // Walidujemy przed wysyłką. Przy błędzie blokujemy submit (preventDefault),
   // dzięki czemu akcja serwera się nie uruchamia i React nie zeruje formularza.
@@ -89,28 +121,75 @@ export function OrgDetailsForm({
     <form
       action={formAction}
       onSubmit={handleSubmit}
-      onReset={() => setErrors({})}
+      onReset={() => {
+        setErrors({});
+        setLogoPreview(org.logoUrl);
+        setLogoRemoved(false);
+        setLogoError(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }}
       noValidate
       className="space-y-5"
     >
       <div className="rounded-xl border bg-card p-6">
-        {/* Logo — bez uploadu (wkrótce) */}
+        {/* Logo stowarzyszenia */}
         <div className="mb-6 flex items-center gap-4 border-b pb-6">
-          <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-brand">
-            <span className="flex items-center">
-              <span className="size-3.5 rounded-full border-2 border-white" />
-              <span className="-ml-1.5 size-3.5 rounded-full border-2 border-primary" />
-            </span>
-          </div>
+          {logoPreview ? (
+            <img
+              src={logoPreview}
+              alt="Logo stowarzyszenia"
+              className="size-16 shrink-0 rounded-2xl border bg-white object-contain"
+            />
+          ) : (
+            <div className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-brand">
+              <span className="flex items-center">
+                <span className="size-3.5 rounded-full border-2 border-white" />
+                <span className="-ml-1.5 size-3.5 rounded-full border-2 border-primary" />
+              </span>
+            </div>
+          )}
           <div className="flex-1">
             <div className="text-sm font-semibold">Logo stowarzyszenia</div>
             <div className="text-xs text-muted-foreground">
-              PNG lub SVG, min. 240×240 px
+              PNG lub JPG, maksymalnie 1 MB
             </div>
+            {logoError ? (
+              <div className="mt-1 text-xs text-destructive">{logoError}</div>
+            ) : null}
           </div>
-          <span className="rounded-md bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground">
-            wkrótce
-          </span>
+          {/* Plik trafia do akcji jako pole formularza; removeLogo sygnalizuje usunięcie. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            name="logo"
+            accept={LOGO_ACCEPT_ATTR}
+            onChange={handleLogoChange}
+            className="hidden"
+          />
+          {logoRemoved ? (
+            <input type="hidden" name="removeLogo" value="1" />
+          ) : null}
+          <div className="flex shrink-0 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {logoPreview ? "Zmień" : "Dodaj logo"}
+            </Button>
+            {logoPreview ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={removeLogo}
+                className="text-muted-foreground"
+              >
+                Usuń
+              </Button>
+            ) : null}
+          </div>
         </div>
 
         {/* Dane podstawowe */}

@@ -48,6 +48,7 @@ export default async function SettingsPage() {
         postalCode: true,
         city: true,
         description: true,
+        logoUrl: true,
         membershipPaid: true,
       },
     }),
@@ -114,6 +115,7 @@ export default async function SettingsPage() {
               postalCode: org?.postalCode ?? null,
               city: org?.city ?? null,
               description: org?.description ?? null,
+              logoUrl: org?.logoUrl ?? null,
             }}
           />
         </TabsContent>

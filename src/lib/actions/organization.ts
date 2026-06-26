@@ -8,6 +8,7 @@ import {
   createOrganizationSchema,
   organizationDetailsSchema,
   slugify,
+  validateLogoFile,
 } from "@/lib/validations";
 import { generateInviteToken } from "@/lib/tokens";
 import { requireMember } from "@/lib/tenant";
@@ -47,9 +48,21 @@ export async function updateOrganizationDetails(
     return { error: parsed.error.issues[0]?.message ?? "Nieprawidłowe dane." };
   }
 
+  // Logo: nowy plik nadpisuje istniejące, znacznik removeLogo czyści, brak obu → bez zmian.
+  const data: typeof parsed.data & { logoUrl?: string | null } = parsed.data;
+  const logo = formData.get("logo");
+  if (logo instanceof File && logo.size > 0) {
+    const logoError = validateLogoFile(logo);
+    if (logoError) return { error: logoError };
+    const base64 = Buffer.from(await logo.arrayBuffer()).toString("base64");
+    data.logoUrl = `data:${logo.type};base64,${base64}`;
+  } else if (formData.get("removeLogo") === "1") {
+    data.logoUrl = null;
+  }
+
   await prisma.organization.update({
     where: { id: organizationId },
-    data: parsed.data,
+    data,
   });
 
   revalidatePath("/settings");

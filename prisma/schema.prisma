@@ -91,6 +91,9 @@ model Organization {
   postalCode   String?
   city         String?
   description  String?
+  // Logo stowarzyszenia jako data URL (image/png|jpeg) zapisane wprost w bazie —
+  // renderuje się bezpośrednio w <img>, także na drukowanych dokumentach.
+  logoUrl      String?
 
   // Link zapraszający — jeden na stowarzyszenie (regenerowalny, włącz/wyłącz).
   inviteToken   String? @unique // token w URL-u /join/<token>
@@ -223,7 +226,8 @@ model Member {
   attendances     MeetingAttendance[]
   agendaComments  AgendaComment[]
   agendaVotes     AgendaVote[]
-  resolutionVotes ResolutionVote[]
+  resolutionVotes      ResolutionVote[]
+  resolutionSignatures ResolutionSignature[]
 
   @@unique([organizationId, email]) // jeden e-mail = jeden członek danego stowarzyszenia
   @@index([organizationId])
@@ -360,6 +364,12 @@ enum ResolutionStatus {
   REJECTED // Odrzucona
 }
 
+// Rola (tytuł) podpisu pod uchwałą — każdy tytuł obsadzany jednokrotnie.
+enum SignatureRole {
+  CHAIRPERSON // Przewodniczący zebrania
+  SECRETARY // Protokolant
+}
+
 // Uchwała stowarzyszenia. Wynik wyznaczany z głosów przy zamknięciu głosowania.
 model Resolution {
   id             String       @id @default(cuid())
@@ -377,13 +387,34 @@ model Resolution {
   openedAt DateTime? // moment otwarcia głosowania
   decidedAt DateTime? // moment rozstrzygnięcia (przyjęcia/odrzucenia)
 
-  votes ResolutionVote[]
+  votes      ResolutionVote[]
+  signatures ResolutionSignature[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([organizationId, number])
   @@index([organizationId])
+}
+
+// Podpis pod (zatwierdzoną) uchwałą. Reguły:
+//  • jeden członek podpisuje daną uchwałę najwyżej raz (unikat resolutionId+memberId),
+//  • każdy tytuł (Przewodniczący/Protokolant) obsadzany najwyżej raz (unikat resolutionId+role).
+// signerName to migawka imienia i nazwiska z chwili podpisu (integralność dokumentu).
+model ResolutionSignature {
+  id           String     @id @default(cuid())
+  resolution   Resolution @relation(fields: [resolutionId], references: [id], onDelete: Cascade)
+  resolutionId String
+  member       Member     @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId     String
+
+  role       SignatureRole
+  signerName String
+  signedAt   DateTime      @default(now())
+
+  @@unique([resolutionId, memberId])
+  @@unique([resolutionId, role])
+  @@index([resolutionId])
 }
 
 // Głos członka nad uchwałą (jeden głos na członka i uchwałę).

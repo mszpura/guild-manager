@@ -54,6 +54,7 @@ export default async function MeetingProtocolPage({
           regon: true,
           krs: true,
           contactEmail: true,
+          logoUrl: true,
         },
       },
       allowedRoles: { select: { role: { select: { id: true } } } },

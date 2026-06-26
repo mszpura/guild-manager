@@ -2,7 +2,11 @@ import { notFound, redirect } from "next/navigation";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/permissions";
-import { tallyVotes } from "@/lib/resolutions";
+import {
+  tallyVotes,
+  SIGNATURE_ROLE_LABELS,
+  SIGNATURE_ROLE_ORDER,
+} from "@/lib/resolutions";
 import { ProtocolPrintBar } from "@/components/protocol-print-bar";
 
 const dateLongFmt = new Intl.DateTimeFormat("pl-PL", { dateStyle: "long" });
@@ -56,7 +60,11 @@ export default async function ResolutionDocumentPage({
             krs: true,
             contactEmail: true,
             phone: true,
+            logoUrl: true,
           },
+        },
+        signatures: {
+          select: { role: true, signerName: true },
         },
         votes: {
           orderBy: { createdAt: "asc" },
@@ -87,6 +95,10 @@ export default async function ResolutionDocumentPage({
   }
 
   const org = resolution.organization;
+  // Tytuł podpisu → imię i nazwisko sygnatariusza (lub brak, gdy jeszcze niepodpisane).
+  const signatureByRole = new Map(
+    resolution.signatures.map((s) => [s.role, s.signerName]),
+  );
   const tally = tallyVotes(resolution.votes);
   const castCount = tally.FOR + tally.AGAINST + tally.ABSTAIN;
   const eligibleCount = voters.filter((m) =>
@@ -125,10 +137,18 @@ export default async function ResolutionDocumentPage({
         {/* Papier firmowy */}
         <header className="flex items-start justify-between gap-6 border-b-2 border-foreground pb-4">
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 flex items-center">
-              <span className="size-4 rounded-full border-[2.2px] border-foreground" />
-              <span className="-ml-1.5 size-4 rounded-full border-[2.2px] border-primary" />
-            </span>
+            {org.logoUrl ? (
+              <img
+                src={org.logoUrl}
+                alt=""
+                className="h-12 w-auto max-w-[160px] object-contain"
+              />
+            ) : (
+              <span className="mt-0.5 flex items-center">
+                <span className="size-4 rounded-full border-[2.2px] border-foreground" />
+                <span className="-ml-1.5 size-4 rounded-full border-[2.2px] border-primary" />
+              </span>
+            )}
             <div>
               <div className="font-heading text-base font-extrabold leading-tight tracking-tight text-foreground">
                 {org.name}
@@ -281,8 +301,13 @@ export default async function ResolutionDocumentPage({
 
         {/* Podpisy */}
         <section className="keep mt-12 grid grid-cols-2 gap-12 pt-2">
-          <Signature label="Przewodniczący zebrania" />
-          <Signature label="Protokolant" />
+          {SIGNATURE_ROLE_ORDER.map((role) => (
+            <Signature
+              key={role}
+              label={SIGNATURE_ROLE_LABELS[role]}
+              signerName={signatureByRole.get(role) ?? null}
+            />
+          ))}
         </section>
 
         {/* Stopka */}
@@ -324,11 +349,24 @@ function Stat({
   );
 }
 
-function Signature({ label }: { label: string }) {
+function Signature({
+  label,
+  signerName,
+}: {
+  label: string;
+  signerName?: string | null;
+}) {
   return (
     <div className="text-center">
-      <div className="mb-1 h-12 border-b border-dashed border-foreground/40" />
-      <div className="text-xs text-muted-foreground">{label}</div>
+      {/* Odręczny podpis nad linią — czcionka „podpisowa". */}
+      <div className="flex h-12 items-end justify-center border-b border-dashed border-foreground/40">
+        {signerName ? (
+          <span className="font-signature pb-0.5 text-[28px] leading-none text-foreground/90">
+            {signerName}
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-1 text-xs text-muted-foreground">{label}</div>
     </div>
   );
 }

@@ -76,6 +76,25 @@ export const organizationDetailsSchema = z.object({
   description: optionalText(500, "Opis jest za długi."),
 });
 
+// Logo stowarzyszenia — ograniczenia współdzielone przez podgląd (klient) i akcję (serwer).
+export const LOGO_ACCEPTED_TYPES = ["image/png", "image/jpeg"] as const;
+export const LOGO_ACCEPT_ATTR = "image/png,image/jpeg";
+export const LOGO_MAX_BYTES = 1024 * 1024; // 1 MB
+
+// Sprawdza typ i rozmiar przesłanego logo. Zwraca komunikat błędu lub null (OK).
+export function validateLogoFile(file: {
+  type: string;
+  size: number;
+}): string | null {
+  if (!(LOGO_ACCEPTED_TYPES as readonly string[]).includes(file.type)) {
+    return "Logo musi być plikiem PNG lub JPG.";
+  }
+  if (file.size > LOGO_MAX_BYTES) {
+    return "Logo może mieć maksymalnie 1 MB.";
+  }
+  return null;
+}
+
 // Walidacja publicznego formularza zgłoszeniowego (link zapraszający).
 // Dane pochodzą z publicznego źródła — walidujemy je rygorystycznie po stronie serwera.
 export const applicationSchema = z.object({

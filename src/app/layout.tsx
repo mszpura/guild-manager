@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
-import { Public_Sans, Libre_Franklin, IBM_Plex_Mono } from "next/font/google";
+import {
+  Public_Sans,
+  Libre_Franklin,
+  IBM_Plex_Mono,
+  Dancing_Script,
+} from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
@@ -23,6 +28,13 @@ const mono = IBM_Plex_Mono({
   weight: ["400", "500"],
 });
 
+// Czcionka „podpisowa" (odręczna) — użyta na dokumentach przy podpisach.
+const signature = Dancing_Script({
+  variable: "--font-signature",
+  subsets: ["latin", "latin-ext"],
+  weight: ["500", "600", "700"],
+});
+
 export const metadata: Metadata = {
   title: "Zarządzanie stowarzyszeniem",
   description:
@@ -38,7 +50,7 @@ export default function RootLayout({
     <html
       lang="pl"
       suppressHydrationWarning
-      className={`${sans.variable} ${heading.variable} ${mono.variable} h-full antialiased`}
+      className={`${sans.variable} ${heading.variable} ${mono.variable} ${signature.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         {/* Tryb jasny/ciemny wyłączony — wymuszamy jasny. */}

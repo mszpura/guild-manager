@@ -18,9 +18,11 @@ import {
 export function OrgSwitcher({
   members,
   activeId,
+  activeLogoUrl,
 }: {
   members: MemberWithOrg[];
   activeId: string;
+  activeLogoUrl?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -45,9 +47,17 @@ export function OrgSwitcher({
           disabled={pending}
           className="h-auto gap-2.5 rounded-lg bg-muted py-1.5 pr-2.5 pl-2 font-normal"
         >
-          <span className="flex size-6 items-center justify-center rounded-md bg-brand text-xs font-bold text-brand-foreground">
-            {orgInitial}
-          </span>
+          {activeLogoUrl ? (
+            <img
+              src={activeLogoUrl}
+              alt=""
+              className="size-6 rounded-md border bg-white object-contain"
+            />
+          ) : (
+            <span className="flex size-6 items-center justify-center rounded-md bg-brand text-xs font-bold text-brand-foreground">
+              {orgInitial}
+            </span>
+          )}
           <span className="max-w-44 truncate text-sm font-semibold text-foreground">
             {orgName}
           </span>

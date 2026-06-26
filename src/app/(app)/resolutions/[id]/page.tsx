@@ -13,6 +13,7 @@ import {
   ResolutionVoteButtons,
   ResolutionStatusControls,
   ResolutionDeleteButton,
+  ResolutionSignControls,
 } from "@/components/resolution-controls";
 import { Button } from "@/components/ui/button";
 import { ChevronRight } from "lucide-react";
@@ -57,6 +58,10 @@ export default async function ResolutionDetailPage({
             member: { select: { firstName: true, lastName: true } },
           },
         },
+        signatures: {
+          orderBy: { signedAt: "asc" },
+          select: { role: true, signerName: true, memberId: true },
+        },
       },
     }),
     // Uprawnieni do głosowania = członkowie z dostępem do panelu Uchwały w trybie
@@ -86,6 +91,9 @@ export default async function ResolutionDetailPage({
   const tally = tallyVotes(resolution.votes);
   const myChoice =
     resolution.votes.find((v) => v.memberId === me.id)?.choice ?? null;
+  // Tytuł, którym podpisał się bieżący użytkownik (jeśli w ogóle).
+  const mySignatureRole =
+    resolution.signatures.find((s) => s.memberId === me.id)?.role ?? null;
   const castCount = tally.FOR + tally.AGAINST + tally.ABSTAIN;
   const isVoting = resolution.status === "VOTING";
   const isDraft = resolution.status === "DRAFT";
@@ -286,6 +294,23 @@ export default async function ResolutionDetailPage({
           </>
         )}
       </div>
+
+      {/* podpisy — dostępne po zatwierdzeniu uchwały */}
+      {resolution.status === "PASSED" ? (
+        <div className="rounded-xl border bg-card p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-heading text-base font-bold">Podpisy</h2>
+            <span className="text-xs text-muted-foreground">
+              {resolution.signatures.length} z 2
+            </span>
+          </div>
+          <ResolutionSignControls
+            resolutionId={resolution.id}
+            mySignatureRole={mySignatureRole}
+            signatures={resolution.signatures}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

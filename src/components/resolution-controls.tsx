@@ -3,14 +3,20 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Trash2, Vote, CheckCheck, RotateCcw } from "lucide-react";
+import { Trash2, Vote, CheckCheck, RotateCcw, PenLine, Check } from "lucide-react";
 import {
   castResolutionVote,
   openResolutionVoting,
   closeResolutionVoting,
   reopenResolutionDraft,
   deleteResolution,
+  signResolution,
 } from "@/lib/actions/resolutions";
+import {
+  SIGNATURE_ROLE_LABELS,
+  SIGNATURE_ROLE_ORDER,
+} from "@/lib/resolutions";
+import type { SignatureRole } from "@/generated/prisma/client";
 import { Button } from "@/components/ui/button";
 
 type Choice = "FOR" | "AGAINST" | "ABSTAIN";
@@ -242,6 +248,77 @@ export function ResolutionStatusControls({
       <RotateCcw className="size-4" />
       Cofnij do szkicu
     </Button>
+  );
+}
+
+// Przyciski podpisu pod zatwierdzoną uchwałą. Każdy tytuł obsadzany jednokrotnie;
+// zalogowany członek może złożyć tylko jeden podpis.
+export function ResolutionSignControls({
+  resolutionId,
+  mySignatureRole,
+  signatures,
+}: {
+  resolutionId: string;
+  // Tytuł, którym podpisał się bieżący użytkownik (lub null, jeśli jeszcze nie podpisał).
+  mySignatureRole: SignatureRole | null;
+  // Złożone podpisy: tytuł → imię i nazwisko.
+  signatures: { role: SignatureRole; signerName: string }[];
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const taken = new Map(signatures.map((s) => [s.role, s.signerName]));
+
+  function sign(role: SignatureRole) {
+    start(async () => {
+      try {
+        await signResolution(resolutionId, role);
+        router.refresh();
+        toast.success(`Podpisano jako ${SIGNATURE_ROLE_LABELS[role]}.`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Nie udało się podpisać.");
+      }
+    });
+  }
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {SIGNATURE_ROLE_ORDER.map((role) => {
+        const signerName = taken.get(role);
+        const signedByMe = mySignatureRole === role;
+        // Mogę podpisać dany tytuł, jeśli nie jest zajęty i sam nie złożyłem jeszcze podpisu.
+        const canSign = !signerName && mySignatureRole === null;
+        return (
+          <div key={role} className="rounded-lg border bg-card p-4">
+            <div className="text-[11px] font-bold tracking-wide text-muted-foreground">
+              {SIGNATURE_ROLE_LABELS[role].toUpperCase()}
+            </div>
+            {signerName ? (
+              <div className="mt-2 flex items-center gap-2 text-sm">
+                <Check
+                  className={`size-4 shrink-0 ${signedByMe ? "text-emerald-600" : "text-muted-foreground"}`}
+                />
+                <span className="font-medium">{signerName}</span>
+                {signedByMe ? (
+                  <span className="text-xs text-muted-foreground">(Ty)</span>
+                ) : null}
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 w-full"
+                disabled={pending || !canSign}
+                onClick={() => sign(role)}
+              >
+                <PenLine className="size-4" />
+                Podpisz jako {SIGNATURE_ROLE_LABELS[role]}
+              </Button>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

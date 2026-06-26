@@ -1,5 +1,18 @@
 // Domena uchwał: etykiety/kolory statusów + zliczanie głosów.
-import type { ResolutionStatus, VoteChoice } from "@/generated/prisma/client";
+import type {
+  ResolutionStatus,
+  SignatureRole,
+  VoteChoice,
+} from "@/generated/prisma/client";
+
+// Etykiety tytułów podpisu pod uchwałą.
+export const SIGNATURE_ROLE_LABELS: Record<SignatureRole, string> = {
+  CHAIRPERSON: "Przewodniczący zebrania",
+  SECRETARY: "Protokolant",
+};
+
+// Kolejność wyświetlania tytułów (przyciski, podpisy na dokumencie).
+export const SIGNATURE_ROLE_ORDER: SignatureRole[] = ["CHAIRPERSON", "SECRETARY"];
 
 export const RESOLUTION_STATUS_LABELS: Record<ResolutionStatus, string> = {
   DRAFT: "Szkic",
