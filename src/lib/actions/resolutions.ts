@@ -170,13 +170,22 @@ export async function closeResolutionVoting(resolutionId: string) {
 export async function reopenResolutionDraft(resolutionId: string) {
   const resolution = await prisma.resolution.findUnique({
     where: { id: resolutionId },
-    select: { organizationId: true, status: true },
+    select: {
+      organizationId: true,
+      status: true,
+      _count: { select: { signatures: true } },
+    },
   });
   if (!resolution) throw new Error("Uchwała nie istnieje.");
 
   await requireMember(resolution.organizationId, "RESOLUTIONS", "WRITE");
 
   if (resolution.status === "DRAFT") return;
+
+  // Podpisana uchwała jest zamknięta — cofnięcie do szkicu skasowałoby podpisy.
+  if (resolution._count.signatures > 0) {
+    throw new Error("Nie można cofnąć do szkicu — uchwała została podpisana.");
+  }
 
   await prisma.$transaction([
     prisma.resolutionVote.deleteMany({ where: { resolutionId } }),

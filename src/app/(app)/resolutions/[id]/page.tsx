@@ -170,6 +170,7 @@ export default async function ResolutionDetailPage({
             <ResolutionStatusControls
               resolutionId={resolution.id}
               status={resolution.status}
+              hasSignatures={resolution.signatures.length > 0}
             />
             <ResolutionDeleteButton
               resolutionId={resolution.id}

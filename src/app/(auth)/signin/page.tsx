@@ -21,11 +21,11 @@ export default async function SignInPage({
   return (
     <main className="grid min-h-svh md:grid-cols-[1.05fr_1fr]">
       {/* lewy panel brandowy */}
-      <div className="relative hidden flex-col justify-between overflow-hidden bg-brand p-14 text-brand-foreground md:flex">
+      <div className="relative hidden flex-col justify-center overflow-hidden bg-brand p-14 text-brand-foreground md:flex">
         <div className="pointer-events-none absolute -top-28 -right-28 size-80 rounded-full border border-white/10" />
         <div className="pointer-events-none absolute -top-14 -right-14 size-52 rounded-full border border-primary/30" />
 
-        <div className="relative flex items-center gap-2.5">
+        <div className="absolute top-14 left-14 flex items-center gap-2.5">
           <span className="flex items-center">
             <span className="size-3.5 rounded-full border-2 border-white" />
             <span className="-ml-1.5 size-3.5 rounded-full border-2 border-primary" />
@@ -50,10 +50,6 @@ export default async function SignInPage({
             ))}
           </ul>
         </div>
-
-        <p className="relative font-mono text-xs tracking-wide text-white/45">
-          Dane szyfrowane i przechowywane w Polsce
-        </p>
       </div>
 
       {/* prawy formularz */}

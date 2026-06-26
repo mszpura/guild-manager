@@ -174,9 +174,12 @@ export function ResolutionVoteButtons({
 export function ResolutionStatusControls({
   resolutionId,
   status,
+  hasSignatures,
 }: {
   resolutionId: string;
   status: Status;
+  // Podpisana uchwała jest zamknięta — nie udostępniamy cofnięcia do szkicu.
+  hasSignatures?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -235,7 +238,9 @@ export function ResolutionStatusControls({
     );
   }
 
-  // PASSED / REJECTED — można przywrócić do szkicu (czyści głosy).
+  // PASSED / REJECTED — można przywrócić do szkicu (czyści głosy),
+  // chyba że uchwała została już podpisana (wtedy jest zamknięta).
+  if (hasSignatures) return null;
   return (
     <Button
       type="button"
