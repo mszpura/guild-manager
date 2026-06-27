@@ -4,7 +4,8 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, RotateCcw, Search } from "lucide-react";
-import { setFeePaid } from "@/lib/actions/fees";
+import { setFeePaid, setMemberTier } from "@/lib/actions/fees";
+import { formatPLN } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -18,11 +19,15 @@ export type FeeCycle = {
   status: CycleStatus;
 };
 
+export type FeeTier = { id: string; label: string; amount: number };
+
 export type FeeRow = {
   memberId: string;
   name: string;
   initials: string;
   roleName: string;
+  tierId: string | null; // przypisany próg składki, null = nieprzypisany
+  saldo: number | null; // saldo (grosze, ≤ 0), null gdy brak przypisanej składki
   status: FeeStatus; // status bieżącego okresu (filtry/statystyki)
   cycles: FeeCycle[]; // historia cykli, od najstarszego do bieżącego
 };
@@ -39,6 +44,16 @@ const CYCLE_STYLE: Record<
 };
 
 type Filter = "ALL" | "PAID" | "UNPAID";
+
+// Polska odmiana: „1 osoba zalega", „2 osoby zalegają", „5 osób zalega".
+function debtorsLabel(n: number): string {
+  const ones = n % 10;
+  const tens = n % 100;
+  if (n === 1) return "1 osoba zalega";
+  if (ones >= 2 && ones <= 4 && !(tens >= 12 && tens <= 14))
+    return `${n} osoby zalegają`;
+  return `${n} osób zalega`;
+}
 
 function StatCard({
   label,
@@ -139,14 +154,82 @@ function CycleCell({ cycle }: { cycle: FeeCycle }) {
   );
 }
 
+// Wybór składki (progu) dla członka — z listy zdefiniowanej w ustawieniach.
+function TierSelect({
+  memberId,
+  tierId,
+  tiers,
+  canManage,
+}: {
+  memberId: string;
+  tierId: string | null;
+  tiers: FeeTier[];
+  canManage: boolean;
+}) {
+  const router = useRouter();
+  const [value, setValue] = useState(tierId ?? "");
+  const [saving, startSave] = useTransition();
+
+  const current = tiers.find((t) => t.id === value);
+
+  if (!canManage) {
+    return (
+      <span className="text-xs text-muted-foreground">
+        {current ? `${current.label} · ${formatPLN(current.amount)}` : "brak składki"}
+      </span>
+    );
+  }
+
+  return (
+    <select
+      value={value}
+      disabled={saving}
+      aria-label="Składka członka"
+      className="h-6 max-w-[180px] rounded border bg-card px-1 text-xs text-muted-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60"
+      onChange={(e) => {
+        const next = e.target.value;
+        const prev = value;
+        setValue(next);
+        startSave(async () => {
+          try {
+            await setMemberTier(memberId, next);
+            router.refresh();
+            toast.success("Zapisano składkę członka.");
+          } catch (err) {
+            setValue(prev); // przywróć poprzedni wybór przy błędzie
+            toast.error(err instanceof Error ? err.message : "Nie udało się zapisać.");
+          }
+        });
+      }}
+    >
+      <option value="">— wybierz składkę —</option>
+      {tiers.map((t) => (
+        <option key={t.id} value={t.id}>
+          {t.label} · {formatPLN(t.amount)}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 export function FeesManager({
   year,
   rows,
+  tiers,
   canManage,
+  collected,
+  charged,
+  arrears,
+  debtorCount,
 }: {
   year: number;
   rows: FeeRow[];
+  tiers: FeeTier[];
   canManage: boolean;
+  collected: number; // zebrano w bieżącym roku (grosze)
+  charged: number; // naliczono w bieżącym roku (grosze)
+  arrears: number; // suma zaległości (grosze)
+  debtorCount: number; // liczba członków z zaległościami
 }) {
   const router = useRouter();
   const [filter, setFilter] = useState<Filter>("ALL");
@@ -159,7 +242,13 @@ export function FeesManager({
     return { all: rows.length, paid, unpaid: rows.length - paid };
   }, [rows]);
 
-  const rate = counts.all > 0 ? Math.round((counts.paid / counts.all) * 100) : 0;
+  // Opłacalność liczona kwotowo (zebrano/naliczono); bez naliczeń — wg liczby wpłat.
+  const rate =
+    charged > 0
+      ? Math.round((collected / charged) * 100)
+      : counts.all > 0
+        ? Math.round((counts.paid / counts.all) * 100)
+        : 0;
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -196,16 +285,16 @@ export function FeesManager({
       {/* karty statystyk */}
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
-          label={`Opłacone ${year}`}
-          value={`${counts.paid} / ${counts.all}`}
-          hint="opłaconych składek"
+          label={`Zebrano ${year}`}
+          value={formatPLN(collected)}
+          hint={`z ${formatPLN(charged)} naliczonych`}
         />
         <StatCard label="Opłacalność" value={`${rate}%`} bar={rate} />
         <StatCard
-          label="Nieopłacone"
-          value={String(counts.unpaid)}
-          hint={counts.unpaid > 0 ? `${counts.unpaid} bez opłaty` : "wszyscy opłacili"}
-          accent={counts.unpaid > 0}
+          label="Zaległości"
+          value={formatPLN(arrears)}
+          hint={debtorCount > 0 ? debtorsLabel(debtorCount) : "brak zaległości"}
+          accent={arrears > 0}
         />
       </div>
 
@@ -239,16 +328,17 @@ export function FeesManager({
 
       {/* tabela */}
       <div className="overflow-hidden rounded-xl border bg-card">
-        <div className="grid grid-cols-[minmax(180px,1fr)_160px_150px] gap-4 border-b px-5 py-3 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
+        <div className="grid grid-cols-[minmax(180px,1fr)_160px_96px_150px] gap-4 border-b px-5 py-3 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
           <span>Członek</span>
           <span>Okres składkowy</span>
+          <span>Saldo</span>
           <span className="text-right">Akcja</span>
         </div>
 
         {visible.map((row) => (
           <div
             key={row.memberId}
-            className="grid grid-cols-[minmax(180px,1fr)_160px_150px] items-center gap-4 border-b px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40"
+            className="grid grid-cols-[minmax(180px,1fr)_160px_96px_150px] items-center gap-4 border-b px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40"
           >
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
@@ -258,8 +348,15 @@ export function FeesManager({
                 <div className="truncate text-sm font-semibold text-foreground">
                   {row.name}
                 </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {row.roleName}
+                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="shrink-0 truncate">{row.roleName}</span>
+                  <span aria-hidden>·</span>
+                  <TierSelect
+                    memberId={row.memberId}
+                    tierId={row.tierId}
+                    tiers={tiers}
+                    canManage={canManage}
+                  />
                 </div>
               </div>
             </div>
@@ -268,6 +365,17 @@ export function FeesManager({
               {row.cycles.map((c) => (
                 <CycleCell key={c.year} cycle={c} />
               ))}
+            </div>
+
+            <div
+              className={cn(
+                "font-mono text-[13px]",
+                row.saldo != null && row.saldo < 0
+                  ? "font-semibold text-destructive"
+                  : "text-muted-foreground",
+              )}
+            >
+              {row.saldo == null ? "—" : formatPLN(row.saldo)}
             </div>
 
             <div className="flex justify-end">

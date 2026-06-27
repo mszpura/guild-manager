@@ -110,9 +110,8 @@ function FeeDueDateForm({
       <div>
         <h3 className="text-sm font-medium">Termin opłacenia składki</h3>
         <p className="text-sm text-muted-foreground">
-          Coroczny termin wniesienia składki (obsługujemy tylko składki roczne).
-          Ten dzień wyznacza też granicę okresu składkowego — w nim okres przewija
-          się na kolejny.
+          Coroczny termin wniesienia składki za dany rok (obsługujemy tylko
+          składki roczne). Po tym dniu nieopłacona składka staje się zaległa.
           {current ? ` Obecnie: ${current}.` : " Obecnie nieustawiony."}
         </p>
       </div>
@@ -177,9 +176,13 @@ function TierManager({
 
   function remove(id: string) {
     startDelete(async () => {
-      await deletePaymentTier(id);
-      router.refresh();
-      toast.success("Usunięto próg.");
+      try {
+        await deletePaymentTier(id);
+        router.refresh();
+        toast.success("Usunięto próg.");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Nie udało się usunąć.");
+      }
     });
   }
 
@@ -207,8 +210,13 @@ function TierManager({
                 variant="ghost"
                 size="icon"
                 onClick={() => remove(t.id)}
-                disabled={deleting}
+                disabled={deleting || tiers.length <= 1}
                 aria-label={`Usuń próg ${t.label}`}
+                title={
+                  tiers.length <= 1
+                    ? "Musi pozostać co najmniej jedna składka"
+                    : undefined
+                }
               >
                 <Trash2 className="size-4" />
               </Button>

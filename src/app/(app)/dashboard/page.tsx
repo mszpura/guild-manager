@@ -12,6 +12,8 @@ import {
   RESOLUTION_STATUS_LABELS,
   RESOLUTION_STATUS_BADGE,
 } from "@/lib/resolutions";
+import { summarizeFees } from "@/lib/fees";
+import { formatPLN } from "@/lib/money";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -59,10 +61,17 @@ export default async function DashboardPage() {
     passedResolutions,
     lastResolution,
     recentResolutions,
+    feeMembers,
   ] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: orgId },
-      select: { name: true, krs: true },
+      select: {
+        name: true,
+        krs: true,
+        membershipPaid: true,
+        feeDueMonth: true,
+        feeDueDay: true,
+      },
     }),
     prisma.member.count({ where: { organizationId: orgId } }),
     canMembers
@@ -119,7 +128,39 @@ export default async function DashboardPage() {
           },
         })
       : Promise.resolve([]),
+    // Dane składkowe wszystkich członków (do panelu opłacalności i listy zaległości).
+    canMembers
+      ? prisma.member.findMany({
+          where: { organizationId: orgId },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            joinedAt: true,
+            paymentTier: { select: { amount: true } },
+            membershipFees: { select: { year: true, amount: true } },
+          },
+        })
+      : Promise.resolve([]),
   ]);
+
+  // Podsumowanie składek liczymy tylko gdy członkostwo jest płatne i mamy dostęp.
+  const feeSummary =
+    canMembers && org?.membershipPaid
+      ? summarizeFees(feeMembers, {
+          feeDueMonth: org.feeDueMonth,
+          feeDueDay: org.feeDueDay,
+          now,
+        })
+      : null;
+
+  // Lista zaległości — najwięksi dłużnicy pierwsi.
+  const debtors = feeSummary
+    ? feeSummary.results
+        .filter((r) => r.saldo != null && r.saldo < 0)
+        .sort((a, b) => (a.saldo ?? 0) - (b.saldo ?? 0))
+        .slice(0, 5)
+    : [];
 
   const nextMeeting = upcomingMeetings[0];
   const today = fullDateFmt.format(new Date());
@@ -160,17 +201,7 @@ export default async function DashboardPage() {
           lastDecidedAt={lastResolution?.decidedAt ?? null}
         />
 
-        <div className="rounded-xl border bg-card p-5">
-          <StatLabel>
-            OPŁACONE SKŁADKI <Demo />
-          </StatLabel>
-          <div className="font-heading text-3xl font-extrabold leading-none">
-            98%
-          </div>
-          <div className="mt-2 text-xs font-medium text-destructive">
-            3 zaległości
-          </div>
-        </div>
+        <FeeStat feeSummary={feeSummary} membershipPaid={org?.membershipPaid ?? false} />
 
         <Link
           href="/meetings"
@@ -321,7 +352,7 @@ export default async function DashboardPage() {
         ) : null}
         </div>
 
-        {/* prawa: widgety przykładowe */}
+        {/* prawa: nadchodzące spotkania + składki do uregulowania */}
         <div className="flex flex-col gap-5">
           <div className="rounded-xl border bg-card p-5">
             <div className="mb-3 flex items-center justify-between">
@@ -371,28 +402,42 @@ export default async function DashboardPage() {
             )}
           </div>
 
-          <div className="rounded-xl border bg-card p-5">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-heading text-base font-bold">
-                Składki do uregulowania
-              </h3>
-              <Demo />
+          {feeSummary ? (
+            <div className="rounded-xl border bg-card p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="font-heading text-base font-bold">
+                  Składki do uregulowania
+                </h3>
+                <Link
+                  href="/payments"
+                  className="text-sm font-semibold text-primary"
+                >
+                  Wszystkie →
+                </Link>
+              </div>
+              {debtors.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Brak zaległości — wszystko opłacone.
+                </p>
+              ) : (
+                <ul className="space-y-3 text-sm">
+                  {debtors.map((d) => (
+                    <li
+                      key={d.member.id}
+                      className="flex items-center justify-between gap-2"
+                    >
+                      <span className="truncate font-medium">
+                        {d.member.firstName} {d.member.lastName ?? ""}
+                      </span>
+                      <span className="shrink-0 font-semibold text-destructive">
+                        {formatPLN(-(d.saldo ?? 0))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
-            <ul className="space-y-3 text-sm">
-              {[
-                ["Anna Nowak", "120 zł"],
-                ["Piotr Wójcik", "120 zł"],
-                ["Krzysztof Zając", "60 zł"],
-              ].map(([name, amount]) => (
-                <li key={name} className="flex items-center justify-between">
-                  <span className="font-medium">{name}</span>
-                  <span className="font-semibold text-destructive">
-                    {amount}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -442,15 +487,46 @@ function StatLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Znacznik treści przykładowej (do wymiany na realne dane).
-function Demo({ dark }: { dark?: boolean }) {
+// Karta opłacalności składek (% zebranych + liczba zaległości). Link do rejestru.
+function FeeStat({
+  feeSummary,
+  membershipPaid,
+}: {
+  feeSummary: { rate: number; debtorCount: number } | null;
+  membershipPaid: boolean;
+}) {
+  if (!feeSummary) {
+    return (
+      <div className="rounded-xl border bg-card p-5">
+        <StatLabel>OPŁACONE SKŁADKI</StatLabel>
+        <div className="font-heading text-3xl font-extrabold leading-none text-muted-foreground">
+          —
+        </div>
+        <div className="mt-2 text-xs font-medium text-muted-foreground">
+          {membershipPaid ? "Brak dostępu" : "Składki wyłączone"}
+        </div>
+      </div>
+    );
+  }
+  const { rate, debtorCount } = feeSummary;
   return (
-    <span
-      className={`rounded px-1.5 py-0.5 text-[9px] font-semibold tracking-normal ${
-        dark ? "bg-white/15 text-white/70" : "bg-muted text-muted-foreground"
-      }`}
+    <Link
+      href="/payments"
+      className="rounded-xl border bg-card p-5 transition-colors hover:border-primary/50"
     >
-      przykładowe
-    </span>
+      <StatLabel>OPŁACONE SKŁADKI</StatLabel>
+      <div className="font-heading text-3xl font-extrabold leading-none">
+        {rate}%
+      </div>
+      <div
+        className={`mt-2 text-xs font-medium ${
+          debtorCount > 0 ? "text-destructive" : "text-muted-foreground"
+        }`}
+      >
+        {debtorCount > 0
+          ? `${debtorCount} ${debtorCount === 1 ? "zaległość" : "zaległości"}`
+          : "Wszystko opłacone"}
+      </div>
+    </Link>
   );
 }

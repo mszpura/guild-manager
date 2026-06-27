@@ -9,7 +9,11 @@ import { isValidFeeDueDate } from "@/lib/payments";
 
 export type TierFormState = { error?: string; ok?: boolean } | undefined;
 
-// Włącza/wyłącza płatne członkostwo. OWNER/BOARD.
+// Domyślna składka zakładana przy włączeniu płatnego członkostwa.
+const DEFAULT_TIER = { label: "Składka podstawowa", amount: 10000 }; // 100,00 zł
+
+// Włącza/wyłącza płatne członkostwo. OWNER/BOARD. Po włączeniu w systemie musi istnieć
+// co najmniej jedna składka — jeśli żadnej nie ma, zakładamy domyślną „Składka podstawowa".
 export async function setMembershipPaid(
   organizationId: string,
   paid: boolean,
@@ -19,7 +23,18 @@ export async function setMembershipPaid(
     where: { id: organizationId },
     data: { membershipPaid: paid },
   });
+
+  if (paid) {
+    const count = await prisma.paymentTier.count({ where: { organizationId } });
+    if (count === 0) {
+      await prisma.paymentTier.create({
+        data: { organizationId, ...DEFAULT_TIER, order: 1 },
+      });
+    }
+  }
+
   revalidatePath("/settings");
+  revalidatePath("/payments");
 }
 
 // Ustawia (lub czyści) roczny termin opłacenia składki. OWNER/BOARD.
@@ -91,10 +106,12 @@ export async function addPaymentTier(
   });
 
   revalidatePath("/settings");
+  revalidatePath("/payments");
   return { ok: true };
 }
 
-// Usuwa próg składki. OWNER/BOARD (organizacja ustalana z progu).
+// Usuwa próg składki. OWNER/BOARD (organizacja ustalana z progu). W systemie musi
+// pozostać co najmniej jedna składka — ostatniej nie można usunąć.
 export async function deletePaymentTier(tierId: string) {
   const tier = await prisma.paymentTier.findUnique({
     where: { id: tierId },
@@ -104,6 +121,14 @@ export async function deletePaymentTier(tierId: string) {
 
   await requireMember(tier.organizationId, "SETTINGS", "WRITE");
 
+  const count = await prisma.paymentTier.count({
+    where: { organizationId: tier.organizationId },
+  });
+  if (count <= 1) {
+    throw new Error("Musi pozostać co najmniej jedna składka.");
+  }
+
   await prisma.paymentTier.delete({ where: { id: tierId } });
   revalidatePath("/settings");
+  revalidatePath("/payments");
 }

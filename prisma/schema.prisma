@@ -165,6 +165,8 @@ model PaymentTier {
   order     Int      @default(0)
   createdAt DateTime @default(now())
 
+  members Member[]
+
   @@index([organizationId])
 }
 
@@ -227,6 +229,11 @@ model Member {
   email     String
   birthDate DateTime? // opcjonalne (założyciel nie wypełniał formularza)
   joinedAt  DateTime  @default(now())
+
+  // Przypisany próg składki (z konfiguracji stowarzyszenia). null = nieprzypisany.
+  // Roczna kwota składki członka = paymentTier.amount.
+  paymentTier   PaymentTier? @relation(fields: [paymentTierId], references: [id], onDelete: SetNull)
+  paymentTierId String?
 
   attendances     MeetingAttendance[]
   agendaComments  AgendaComment[]
