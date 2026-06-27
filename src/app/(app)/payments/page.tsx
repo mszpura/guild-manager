@@ -3,8 +3,12 @@ import { redirect } from "next/navigation";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/permissions";
-import { formatFeeDueDate, isFeeOverdue } from "@/lib/payments";
-import { FeesManager, type FeeRow } from "@/components/fees-manager";
+import { currentFeePeriod, recentFeePeriods } from "@/lib/payments";
+import {
+  FeesManager,
+  type CycleStatus,
+  type FeeRow,
+} from "@/components/fees-manager";
 
 export default async function PaymentsPage() {
   const data = await getActiveOrg();
@@ -17,46 +21,75 @@ export default async function PaymentsPage() {
   const canManage = can(me.role, "MEMBERS", "WRITE");
 
   const now = new Date();
-  const year = now.getFullYear();
 
-  const [org, members] = await Promise.all([
-    prisma.organization.findUnique({
-      where: { id: orgId },
-      select: { membershipPaid: true, feeDueMonth: true, feeDueDay: true },
-    }),
-    prisma.member.findMany({
-      where: { organizationId: orgId },
-      orderBy: [
-        { role: { isOwner: "desc" } },
-        { lastName: "asc" },
-        { firstName: "asc" },
-      ],
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        role: { select: { name: true } },
-        membershipFees: {
-          where: { year },
-          select: { id: true },
-          take: 1,
-        },
+  // Okres składkowy wyznacza dzień rozliczeniowy z ustawień (a nie 1 stycznia).
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { membershipPaid: true, feeDueMonth: true, feeDueDay: true },
+  });
+  const period = currentFeePeriod(org?.feeDueMonth, org?.feeDueDay, now);
+  // Kilka ostatnich cykli składkowych — do siatki jak w szablonie (najstarszy → bieżący).
+  const periods = recentFeePeriods(org?.feeDueMonth, org?.feeDueDay, now, 3);
+  const periodYears = periods.map((p) => p.year);
+
+  const members = await prisma.member.findMany({
+    where: { organizationId: orgId },
+    orderBy: [
+      { role: { isOwner: "desc" } },
+      { lastName: "asc" },
+      { firstName: "asc" },
+    ],
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      joinedAt: true,
+      role: { select: { name: true } },
+      membershipFees: {
+        where: { year: { in: periodYears } },
+        select: { year: true },
       },
-    }),
-  ]);
+    },
+  });
 
-  const dueLabel = formatFeeDueDate(org?.feeDueMonth, org?.feeDueDay);
-  const overdue = isFeeOverdue(org?.feeDueMonth, org?.feeDueDay, year, now);
+  const nowMs = now.getTime();
 
   const rows: FeeRow[] = members.map((m) => {
-    const paid = m.membershipFees.length > 0;
+    const paidYears = new Set(m.membershipFees.map((f) => f.year));
+    const joinedMs = m.joinedAt.getTime();
+
+    const cycles = periods.map((p) => {
+      let status: CycleStatus;
+      if (joinedMs > p.endsAt.getTime()) {
+        status = "NA"; // członek nie należał jeszcze w tym okresie
+      } else if (paidYears.has(p.year)) {
+        status = "PAID";
+      } else if (nowMs > p.endsAt.getTime()) {
+        status = "OVERDUE"; // minął termin, brak wpłaty
+      } else {
+        status = "PENDING"; // bieżący okres, jeszcze przed terminem
+      }
+      return {
+        year: p.year,
+        short: `'${String(p.year % 100).padStart(2, "0")}`,
+        label: p.label,
+        status,
+      };
+    });
+
+    // Status bieżącego okresu = ostatni cykl (steruje filtrami/statystykami). Dla
+    // obecnego członka cykl bieżący nigdy nie jest „NA", ale zawężamy typ na wszelki wypadek.
+    const last = cycles[cycles.length - 1].status;
+    const status: FeeRow["status"] = last === "NA" ? "PENDING" : last;
+
     const fullName = [m.firstName, m.lastName].filter(Boolean).join(" ");
     return {
       memberId: m.id,
       name: fullName,
       initials: initials(m.firstName, m.lastName),
       roleName: m.role.name,
-      status: paid ? "PAID" : overdue ? "OVERDUE" : "PENDING",
+      status,
+      cycles,
     };
   });
 
@@ -66,19 +99,13 @@ export default async function PaymentsPage() {
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight">Składki</h1>
           <p className="text-sm text-muted-foreground">
-            Rejestr składek członkowskich · rok rozliczeniowy {year}
-            {dueLabel ? ` · termin do ${dueLabel}` : ""}
+            Rejestr składek członkowskich · okres składkowy {period.label}
           </p>
         </div>
       </div>
 
       {org?.membershipPaid ? (
-        <FeesManager
-          year={year}
-          rows={rows}
-          canManage={canManage}
-          hasDueDate={dueLabel != null}
-        />
+        <FeesManager year={period.year} rows={rows} canManage={canManage} />
       ) : (
         <div className="rounded-xl border bg-card p-10 text-center">
           <p className="text-sm text-muted-foreground">

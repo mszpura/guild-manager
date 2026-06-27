@@ -9,20 +9,33 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export type FeeStatus = "PAID" | "OVERDUE" | "PENDING";
+export type CycleStatus = FeeStatus | "NA";
+
+export type FeeCycle = {
+  year: number;
+  short: string; // np. „'26"
+  label: string; // pełny opis okresu (tooltip)
+  status: CycleStatus;
+};
 
 export type FeeRow = {
   memberId: string;
   name: string;
   initials: string;
   roleName: string;
-  status: FeeStatus;
+  status: FeeStatus; // status bieżącego okresu (filtry/statystyki)
+  cycles: FeeCycle[]; // historia cykli, od najstarszego do bieżącego
 };
 
-// Kolory statusów składki — spójne z paletą statusów w projekcie „Associacion".
-const STATUS_STYLE: Record<FeeStatus, { label: string; color: string; bg: string }> = {
-  PAID: { label: "Opłacona", color: "#2f7d4f", bg: "#e7f1ea" },
-  OVERDUE: { label: "Zaległa", color: "#c0392b", bg: "#f7e6e4" },
-  PENDING: { label: "Do zapłaty", color: "#b5731a", bg: "#fbf0df" },
+// Kolory/oznaczenia cykli składki — komórki jak w szablonie „Associacion".
+const CYCLE_STYLE: Record<
+  CycleStatus,
+  { label: string; mark: string; color: string; bg: string }
+> = {
+  PAID: { label: "Opłacona", mark: "✓", color: "#2f7d4f", bg: "#e7f1ea" },
+  OVERDUE: { label: "Zaległa", mark: "!", color: "#c0392b", bg: "#f7e6e4" },
+  PENDING: { label: "Do zapłaty", mark: "•", color: "#b5731a", bg: "#fbf0df" },
+  NA: { label: "Nie dotyczy", mark: "–", color: "#bcc4d4", bg: "#f1f3f8" },
 };
 
 type Filter = "ALL" | "PAID" | "UNPAID";
@@ -105,15 +118,24 @@ function FilterChip({
   );
 }
 
-function StatusBadge({ status }: { status: FeeStatus }) {
-  const s = STATUS_STYLE[status];
+// Pojedyncza komórka cyklu składkowego — etykieta okresu + kolorowy znacznik.
+function CycleCell({ cycle }: { cycle: FeeCycle }) {
+  const s = CYCLE_STYLE[cycle.status];
   return (
-    <span
-      className="inline-block rounded-full px-2.5 py-1 text-[11.5px] font-semibold whitespace-nowrap"
-      style={{ color: s.color, backgroundColor: s.bg }}
+    <div
+      className="flex flex-col items-center gap-1"
+      title={`${cycle.label}: ${s.label}`}
     >
-      {s.label}
-    </span>
+      <span className="font-mono text-[9.5px] text-muted-foreground">
+        {cycle.short}
+      </span>
+      <span
+        className="flex h-[26px] w-[30px] items-center justify-center rounded-md text-[13px] font-bold"
+        style={{ backgroundColor: s.bg, color: s.color }}
+      >
+        {s.mark}
+      </span>
+    </div>
   );
 }
 
@@ -121,12 +143,10 @@ export function FeesManager({
   year,
   rows,
   canManage,
-  hasDueDate,
 }: {
   year: number;
   rows: FeeRow[];
   canManage: boolean;
-  hasDueDate: boolean;
 }) {
   const router = useRouter();
   const [filter, setFilter] = useState<Filter>("ALL");
@@ -219,16 +239,16 @@ export function FeesManager({
 
       {/* tabela */}
       <div className="overflow-hidden rounded-xl border bg-card">
-        <div className="grid grid-cols-[minmax(180px,1fr)_120px_150px] gap-4 border-b px-5 py-3 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
+        <div className="grid grid-cols-[minmax(180px,1fr)_160px_150px] gap-4 border-b px-5 py-3 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
           <span>Członek</span>
-          <span>Status</span>
+          <span>Okres składkowy</span>
           <span className="text-right">Akcja</span>
         </div>
 
         {visible.map((row) => (
           <div
             key={row.memberId}
-            className="grid grid-cols-[minmax(180px,1fr)_120px_150px] items-center gap-4 border-b px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40"
+            className="grid grid-cols-[minmax(180px,1fr)_160px_150px] items-center gap-4 border-b px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40"
           >
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
@@ -244,8 +264,10 @@ export function FeesManager({
               </div>
             </div>
 
-            <div>
-              <StatusBadge status={row.status} />
+            <div className="flex gap-2">
+              {row.cycles.map((c) => (
+                <CycleCell key={c.year} cycle={c} />
+              ))}
             </div>
 
             <div className="flex justify-end">
@@ -285,17 +307,27 @@ export function FeesManager({
           </div>
         ) : null}
 
-        {/* legenda */}
+        {/* legenda — oznaczenia cykli faktycznie występujące na liście */}
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t bg-muted/40 px-5 py-3">
-          {(["PAID", hasDueDate ? "OVERDUE" : "PENDING"] as FeeStatus[]).map((st) => (
-            <div key={st} className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span
-                className="size-2.5 rounded-full"
-                style={{ backgroundColor: STATUS_STYLE[st].color }}
-              />
-              {STATUS_STYLE[st].label}
-            </div>
-          ))}
+          {(["PAID", "OVERDUE", "PENDING", "NA"] as CycleStatus[])
+            .filter((st) => rows.some((r) => r.cycles.some((c) => c.status === st)))
+            .map((st) => {
+              const s = CYCLE_STYLE[st];
+              return (
+                <div
+                  key={st}
+                  className="flex items-center gap-2 text-xs text-muted-foreground"
+                >
+                  <span
+                    className="flex size-4 items-center justify-center rounded text-[10px] font-bold"
+                    style={{ backgroundColor: s.bg, color: s.color }}
+                  >
+                    {s.mark}
+                  </span>
+                  {s.label}
+                </div>
+              );
+            })}
         </div>
       </div>
     </div>

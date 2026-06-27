@@ -111,6 +111,8 @@ function FeeDueDateForm({
         <h3 className="text-sm font-medium">Termin opłacenia składki</h3>
         <p className="text-sm text-muted-foreground">
           Coroczny termin wniesienia składki (obsługujemy tylko składki roczne).
+          Ten dzień wyznacza też granicę okresu składkowego — w nim okres przewija
+          się na kolejny.
           {current ? ` Obecnie: ${current}.` : " Obecnie nieustawiony."}
         </p>
       </div>
