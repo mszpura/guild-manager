@@ -58,3 +58,17 @@ export function formatFeeDueDate(
   if (!isValidFeeDueDate(month, day)) return null;
   return `${day} ${MONTHS_GEN[month - 1]}`;
 }
+
+// Status nieopłaconej składki: minął już tegoroczny termin opłacenia? Bez ustawionego
+// terminu nie da się stwierdzić zaległości — wtedy false (składka „do zapłaty").
+export function isFeeOverdue(
+  month: number | null | undefined,
+  day: number | null | undefined,
+  year: number,
+  now: Date,
+): boolean {
+  if (month == null || day == null) return false;
+  if (!isValidFeeDueDate(month, day)) return false;
+  const due = new Date(year, month - 1, day, 23, 59, 59, 999);
+  return now.getTime() > due.getTime();
+}

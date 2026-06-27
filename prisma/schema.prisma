@@ -111,6 +111,7 @@ model Organization {
   applications      MembershipApplication[]
   applicationFields ApplicationField[]
   paymentTiers      PaymentTier[]
+  membershipFees    MembershipFee[]
   meetings          Meeting[]
   resolutions       Resolution[]
 }
@@ -232,10 +233,30 @@ model Member {
   agendaVotes     AgendaVote[]
   resolutionVotes      ResolutionVote[]
   resolutionSignatures ResolutionSignature[]
+  membershipFees       MembershipFee[]
 
   @@unique([organizationId, email]) // jeden e-mail = jeden członek danego stowarzyszenia
   @@index([organizationId])
   @@index([roleId])
+}
+
+// Opłacenie rocznej składki przez członka. Istnienie rekordu = składka opłacona za
+// dany rok rozliczeniowy; brak rekordu = nieopłacona (zaległa po terminie). Składki
+// są roczne, więc klucz to (członek, rok). Kwota opcjonalna — na razie oznaczamy
+// tylko fakt opłacenia.
+model MembershipFee {
+  id             String       @id @default(cuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  member         Member       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId       String
+
+  year   Int // rok rozliczeniowy
+  amount Int? // grosze — kwota wpłaty (opcjonalnie, na przyszłość)
+  paidAt DateTime @default(now())
+
+  @@unique([memberId, year])
+  @@index([organizationId, year])
 }
 
 // ─── Domena: spotkania (walne zebrania, posiedzenia zarządu) ─────────────────

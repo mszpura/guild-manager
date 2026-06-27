@@ -8,6 +8,7 @@ import { UserMenu } from "@/components/user-menu";
 import { NavLink } from "@/components/nav-link";
 import {
   Users,
+  Wallet,
   CalendarClock,
   Gavel,
   LayoutDashboard,
@@ -34,7 +35,7 @@ export default async function AppLayout({
   // payloadu przełącznika (data URL bywa duży) logami wszystkich członkostw.
   const activeOrg = await prisma.organization.findUnique({
     where: { id: active.organizationId },
-    select: { logoUrl: true },
+    select: { logoUrl: true, membershipPaid: true },
   });
 
   // Widoczność sekcji wg uprawnień roli (jak menu boczne).
@@ -58,6 +59,10 @@ export default async function AppLayout({
     { href: "/dashboard", label: "Pulpit", icon: LayoutDashboard, ready: true },
     ...(can(role, "MEMBERS", "READ")
       ? [{ href: "/members", label: "Członkowie", icon: Users, ready: true }]
+      : []),
+    // Składki widoczne tylko gdy członkostwo jest płatne (inaczej rejestr jest pusty).
+    ...(can(role, "MEMBERS", "READ") && (activeOrg?.membershipPaid ?? false)
+      ? [{ href: "/payments", label: "Składki", icon: Wallet, ready: true }]
       : []),
     ...(canApplications
       ? [
