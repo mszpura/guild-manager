@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   Inbox,
   Settings,
+  UserRound,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -81,6 +82,18 @@ export default async function AppLayout({
     ...(can(role, "RESOLUTIONS", "READ")
       ? [{ href: "/resolutions", label: "Uchwały", icon: Gavel, ready: true }]
       : []),
+  ];
+
+  // Grupa dolna nawigacji (oddzielona linią): profil własny i — dla uprawnionych —
+  // ustawienia. Profil widoczny dla każdego członka.
+  const bottomNav: {
+    href: string;
+    label: string;
+    icon: LucideIcon;
+    ready: boolean;
+    count?: number;
+  }[] = [
+    { href: "/profile", label: "Mój profil", icon: UserRound, ready: true },
     ...(can(role, "SETTINGS", "WRITE")
       ? [{ href: "/settings", label: "Ustawienia", icon: Settings, ready: true }]
       : []),
@@ -114,6 +127,19 @@ export default async function AppLayout({
           </p>
           <nav className="space-y-1">
             {nav.map((item) => (
+              <NavLink
+                key={item.label}
+                href={item.href}
+                label={item.label}
+                ready={item.ready}
+                count={item.count}
+                icon={<item.icon className="size-[18px]" />}
+              />
+            ))}
+          </nav>
+          <div className="mx-2 my-4 h-px bg-border" />
+          <nav className="space-y-1">
+            {bottomNav.map((item) => (
               <NavLink
                 key={item.label}
                 href={item.href}

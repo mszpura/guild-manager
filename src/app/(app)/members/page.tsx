@@ -1,8 +1,8 @@
 import { headers } from "next/headers";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@/generated/prisma/client";
 import { can } from "@/lib/permissions";
 import { InviteLinkCard } from "@/components/invite-link-card";
 import { MemberRoleSelect } from "@/components/member-role-select";
@@ -17,18 +17,6 @@ import {
 } from "@/components/ui/table";
 
 const dateFmt = new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium" });
-
-// customData to migawka [{ label, value }] przeniesiona ze zgłoszenia przy zatwierdzeniu.
-function parseCustomData(
-  data: Prisma.JsonValue | null,
-): { label: string; value: string }[] {
-  if (!Array.isArray(data)) return [];
-  return data.flatMap((item) =>
-    item && typeof item === "object" && "label" in item && "value" in item
-      ? [{ label: String(item.label), value: String(item.value) }]
-      : [],
-  );
-}
 
 export default async function MembersPage() {
   const data = await getActiveOrg();
@@ -95,8 +83,8 @@ export default async function MembersPage() {
             <TableHead>Rola</TableHead>
             {isAdmin ? <TableHead>E-mail</TableHead> : null}
             {isAdmin ? <TableHead>Data urodzenia</TableHead> : null}
-            {isAdmin ? <TableHead>Dane dodatkowe</TableHead> : null}
             <TableHead>Data dołączenia</TableHead>
+            {isAdmin ? <TableHead className="text-right">Szczegóły</TableHead> : null}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -123,35 +111,17 @@ export default async function MembersPage() {
                   {m.birthDate ? dateFmt.format(m.birthDate) : "—"}
                 </TableCell>
               ) : null}
+              <TableCell>{dateFmt.format(m.joinedAt)}</TableCell>
               {isAdmin ? (
-                <TableCell>
-                  {(() => {
-                    // Telefon/adres + migawka pól własnych — pełne dane członka.
-                    const extra = [
-                      ...(m.phone ? [{ label: "Telefon", value: m.phone }] : []),
-                      ...(m.address
-                        ? [{ label: "Adres", value: m.address }]
-                        : []),
-                      ...parseCustomData(m.customData),
-                    ];
-                    if (extra.length === 0)
-                      return <span className="text-muted-foreground">—</span>;
-                    return (
-                      <ul className="space-y-0.5 text-sm">
-                        {extra.map((e, i) => (
-                          <li key={i}>
-                            <span className="text-muted-foreground">
-                              {e.label}:
-                            </span>{" "}
-                            {e.value}
-                          </li>
-                        ))}
-                      </ul>
-                    );
-                  })()}
+                <TableCell className="text-right">
+                  <Link
+                    href={`/members/${m.id}`}
+                    className="text-sm font-semibold text-primary hover:underline"
+                  >
+                    Zobacz profil →
+                  </Link>
                 </TableCell>
               ) : null}
-              <TableCell>{dateFmt.format(m.joinedAt)}</TableCell>
             </TableRow>
           ))}
         </TableBody>
