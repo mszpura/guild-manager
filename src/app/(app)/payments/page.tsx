@@ -21,7 +21,12 @@ export default async function PaymentsPage() {
 
   const org = await prisma.organization.findUnique({
     where: { id: orgId },
-    select: { membershipPaid: true, feeDueMonth: true, feeDueDay: true },
+    select: {
+      membershipPaid: true,
+      feeDueMonth: true,
+      feeDueDay: true,
+      foundedYear: true,
+    },
   });
   const dueLabel = formatFeeDueDate(org?.feeDueMonth, org?.feeDueDay);
 
@@ -56,6 +61,7 @@ export default async function PaymentsPage() {
   const summary = summarizeFees(members, {
     feeDueMonth: org?.feeDueMonth,
     feeDueDay: org?.feeDueDay,
+    foundedYear: org?.foundedYear,
     now,
   });
   const { year, collected, charged, arrears, debtorCount } = summary;
@@ -68,6 +74,9 @@ export default async function PaymentsPage() {
     tierId: m.paymentTierId,
     saldo,
     status: currentStatus,
+    // Wszystkie opłacone lata — do listy okresów w oknie rozliczenia (także starsze
+    // niż siatka cykli, gdy stowarzyszenie istnieje od dawna).
+    paidYears: m.membershipFees.map((f) => f.year),
     cycles: cycles.map((c) => ({
       year: c.year,
       short: `'${String(c.year % 100).padStart(2, "0")}`,
@@ -91,6 +100,7 @@ export default async function PaymentsPage() {
       {org?.membershipPaid ? (
         <FeesManager
           year={year}
+          foundedYear={org?.foundedYear ?? null}
           rows={rows}
           tiers={tiers}
           canManage={canManage}

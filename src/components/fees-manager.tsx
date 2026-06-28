@@ -41,7 +41,8 @@ export type FeeRow = {
   tierId: string | null; // przypisany próg składki, null = nieprzypisany
   saldo: number | null; // saldo (grosze, ≤ 0), null gdy brak przypisanej składki
   status: FeeStatus; // status bieżącego okresu (filtry/statystyki)
-  cycles: FeeCycle[]; // historia cykli, od najstarszego do bieżącego
+  cycles: FeeCycle[]; // historia cykli (siatka), od najstarszego do bieżącego
+  paidYears: number[]; // wszystkie opłacone lata — do listy okresów w oknie rozliczenia
 };
 
 // Kolory/oznaczenia cykli składki — komórki jak w szablonie „Associacion".
@@ -231,30 +232,40 @@ function SettleFeeDialog({
   memberId,
   memberName,
   year,
-  cycles,
+  foundedYear,
+  paidYears,
   tiers,
   currentTierId,
 }: {
   memberId: string;
   memberName: string;
   year: number;
-  cycles: FeeCycle[];
+  foundedYear: number | null;
+  paidYears: number[];
   tiers: FeeTier[];
   currentTierId: string | null;
 }) {
   const router = useRouter();
-  // Okresy do rozliczenia = cykle dotyczące członka (bez „nie dotyczy").
-  const periods = cycles.filter((c) => c.status !== "NA");
-  // Domyślnie pierwszy nieopłacony okres, w razie braku — bieżący rok.
-  const defaultYear = String(periods.find((c) => c.status !== "PAID")?.year ?? year);
+  // Okresy do rozliczenia: od roku założenia stowarzyszenia (gdy jest starsze niż
+  // bieżący rok) do bieżącego — malejąco. Bez roku założenia tylko bieżący rok.
+  const periods = useMemo(() => {
+    const start = foundedYear != null && foundedYear < year ? foundedYear : year;
+    const list: { year: number; paid: boolean }[] = [];
+    for (let y = year; y >= start; y--) {
+      list.push({ year: y, paid: paidYears.includes(y) });
+    }
+    return list;
+  }, [foundedYear, year, paidYears]);
+  // Domyślnie pierwszy nieopłacony okres (od najnowszego), w razie braku — bieżący rok.
+  const defaultYear = String(periods.find((p) => !p.paid)?.year ?? year);
 
   const [open, setOpen] = useState(false);
   const [yearSel, setYearSel] = useState(defaultYear);
   const [tierSel, setTierSel] = useState(currentTierId ?? "");
   const [saving, startSave] = useTransition();
 
-  const selected = periods.find((c) => String(c.year) === yearSel);
-  const isPaid = selected?.status === "PAID";
+  const selected = periods.find((p) => String(p.year) === yearSel);
+  const isPaid = selected?.paid ?? false;
 
   function submit() {
     startSave(async () => {
@@ -305,10 +316,10 @@ function SettleFeeDialog({
               onChange={(e) => setYearSel(e.target.value)}
               className={selectClass}
             >
-              {periods.map((c) => (
-                <option key={c.year} value={c.year}>
-                  {c.year}
-                  {c.status === "PAID" ? " — opłacona" : ""}
+              {periods.map((p) => (
+                <option key={p.year} value={p.year}>
+                  {p.year}
+                  {p.paid ? " — opłacona" : ""}
                 </option>
               ))}
             </select>
@@ -357,6 +368,7 @@ function SettleFeeDialog({
 
 export function FeesManager({
   year,
+  foundedYear,
   rows,
   tiers,
   canManage,
@@ -366,6 +378,7 @@ export function FeesManager({
   debtorCount,
 }: {
   year: number;
+  foundedYear: number | null;
   rows: FeeRow[];
   tiers: FeeTier[];
   canManage: boolean;
@@ -504,7 +517,8 @@ export function FeesManager({
                   memberId={row.memberId}
                   memberName={row.name}
                   year={year}
-                  cycles={row.cycles}
+                  foundedYear={foundedYear}
+                  paidYears={row.paidYears}
                   tiers={tiers}
                   currentTierId={row.tierId}
                 />

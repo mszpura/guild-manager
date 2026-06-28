@@ -36,10 +36,14 @@ export function summarizeFees<T extends FeeMemberInput>(
   config: {
     feeDueMonth: number | null | undefined;
     feeDueDay: number | null | undefined;
+    // Rok założenia stowarzyszenia — najwcześniejszy okres składkowy. Gdy ustawiony,
+    // składki naliczamy od niego (a nie od roku wstąpienia członka), bo daty
+    // wstąpienia importowanych członków bywają tożsame z dniem dodania do systemu.
+    foundedYear?: number | null;
     now: Date;
   },
 ): FeeSummary<T> {
-  const { feeDueMonth, feeDueDay, now } = config;
+  const { feeDueMonth, feeDueDay, foundedYear, now } = config;
   const year = currentFeeYear(now);
   const years = recentFeeYears(now, 3);
   const isOverdueYear = (y: number) => isFeeOverdue(feeDueMonth, feeDueDay, y, now);
@@ -47,11 +51,14 @@ export function summarizeFees<T extends FeeMemberInput>(
   const results: MemberFeeResult<T>[] = members.map((m) => {
     const paidByYear = new Map(m.membershipFees.map((f) => [f.year, f.amount]));
     const joinYear = m.joinedAt.getFullYear();
+    // Najwcześniejszy okres, którego dotyczy składka: rok założenia (gdy znany),
+    // inaczej rok wstąpienia członka.
+    const startYear = foundedYear ?? joinYear;
     const feeAmount = m.paymentTier?.amount ?? null;
 
     const cycles = years.map((y) => {
       let status: FeeCycleStatus;
-      if (y < joinYear) status = "NA";
+      if (y < startYear) status = "NA";
       else if (paidByYear.has(y)) status = "PAID";
       else if (isOverdueYear(y)) status = "OVERDUE";
       else status = "PENDING";
