@@ -1,18 +1,25 @@
 import { z } from "zod";
 
-// Walidacja formularza tworzenia stowarzyszenia.
-export const createOrganizationSchema = z.object({
-  name: z
+// ─── Walidatory pól stowarzyszenia ──────────────────────────────────────────
+// Dane rejestrowe (KRS, NIP, REGON, rok rejestracji, adres) są WYMAGANE —
+// odpowiadają kolumnom NOT NULL w bazie i są zaciągane z API KRS przy zakładaniu.
+// Pola kontaktowe (e-mail, telefon, opis) pozostają opcjonalne (puste → null).
+
+// Wymagany ciąg cyfr o zadanej długości (ignoruje spacje i myślniki).
+const requiredDigits = (length: number, emptyMsg: string, formatMsg: string) =>
+  z
     .string()
     .trim()
-    .min(2, "Nazwa musi mieć co najmniej 2 znaki.")
-    .max(100, "Nazwa może mieć maksymalnie 100 znaków."),
-});
+    .transform((v) => v.replace(/[\s-]/g, ""))
+    .refine((v) => v !== "", emptyMsg)
+    .refine((v) => v === "" || new RegExp(`^\\d{${length}}$`).test(v), formatMsg);
 
-export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;
+// Wymagany tekst (min. 1 znak po przycięciu).
+const requiredText = (max: number, emptyMsg: string, longMsg: string) =>
+  z.string().trim().min(1, emptyMsg).max(max, longMsg);
 
-// Walidacja danych rejestrowych/kontaktowych stowarzyszenia (panel ustawień).
-// Puste pola opcjonalne → null. Numery: prosty format (bez sumy kontrolnej).
+// Opcjonalny ciąg cyfr o zadanej długości (puste → null). KRS nie zawsze podaje
+// NIP/REGON (np. stowarzyszenia nieprowadzące działalności gospodarczej).
 const optionalDigits = (length: number, label: string) =>
   z
     .string()
@@ -28,13 +35,17 @@ const optionalText = (max: number, label: string) =>
     .max(max, label)
     .transform((v) => (v === "" ? null : v));
 
-export const organizationDetailsSchema = z.object({
+// Wspólny zestaw pól stowarzyszenia — używany zarówno przy zakładaniu
+// (CreateOrgForm), jak i w panelu ustawień (OrgDetailsForm). Dzięki temu reguły
+// „wymagane" są spójne z ograniczeniami NOT NULL w schemacie bazy.
+const organizationFields = {
   name: z
     .string()
     .trim()
     .min(2, "Nazwa musi mieć co najmniej 2 znaki.")
     .max(100, "Nazwa może mieć maksymalnie 100 znaków."),
-  krs: optionalDigits(10, "KRS musi mieć 10 cyfr."),
+  krs: requiredDigits(10, "Podaj numer KRS.", "KRS musi mieć 10 cyfr."),
+  // NIP/REGON — opcjonalne: KRS często ich nie zwraca dla stowarzyszeń/fundacji.
   nip: optionalDigits(10, "NIP musi mieć 10 cyfr."),
   regon: z
     .string()
@@ -48,12 +59,23 @@ export const organizationDetailsSchema = z.object({
   foundedYear: z
     .string()
     .trim()
+    .refine((v) => v !== "", "Podaj rok rejestracji.")
     .refine((v) => v === "" || /^\d{4}$/.test(v), "Rok w formacie RRRR.")
-    .transform((v) => (v === "" ? null : Number(v)))
+    .transform((v) => Number(v))
     .refine(
-      (v) => v === null || (v >= 1800 && v <= new Date().getFullYear()),
-      "Podaj realny rok założenia.",
+      (v) => v >= 1800 && v <= new Date().getFullYear(),
+      "Podaj realny rok rejestracji.",
     ),
+  street: requiredText(120, "Podaj ulicę i numer.", "Adres jest za długi."),
+  postalCode: z
+    .string()
+    .trim()
+    .refine((v) => v !== "", "Podaj kod pocztowy.")
+    .refine(
+      (v) => v === "" || /^\d{2}-\d{3}$/.test(v),
+      "Kod pocztowy w formacie 00-000.",
+    ),
+  city: requiredText(80, "Podaj miejscowość.", "Nazwa miejscowości jest za długa."),
   contactEmail: z
     .string()
     .trim()
@@ -63,18 +85,17 @@ export const organizationDetailsSchema = z.object({
       "Podaj poprawny adres e-mail.",
     ),
   phone: optionalText(30, "Telefon jest za długi."),
-  street: optionalText(120, "Adres jest za długi."),
-  postalCode: z
-    .string()
-    .trim()
-    .transform((v) => (v === "" ? null : v))
-    .refine(
-      (v) => v === null || /^\d{2}-\d{3}$/.test(v),
-      "Kod pocztowy w formacie 00-000.",
-    ),
-  city: optionalText(80, "Nazwa miejscowości jest za długa."),
   description: optionalText(500, "Opis jest za długi."),
-});
+};
+
+// Walidacja formularza tworzenia stowarzyszenia (z danymi z KRS).
+export const createOrganizationSchema = z.object(organizationFields);
+
+export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;
+
+// Walidacja danych rejestrowych/kontaktowych stowarzyszenia (panel ustawień).
+// Ten sam zestaw pól co przy zakładaniu — dane rejestrowe pozostają wymagane.
+export const organizationDetailsSchema = z.object(organizationFields);
 
 // Logo stowarzyszenia — ograniczenia współdzielone przez podgląd (klient) i akcję (serwer).
 export const LOGO_ACCEPTED_TYPES = ["image/png", "image/jpeg"] as const;

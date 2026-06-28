@@ -11,6 +11,7 @@ import {
   validateLogoFile,
 } from "@/lib/validations";
 import { generateInviteToken } from "@/lib/tokens";
+import { fetchKrsData, type KrsLookupResult } from "@/lib/krs";
 import { requireMember } from "@/lib/tenant";
 import {
   OWNER_PERMISSIONS,
@@ -21,6 +22,16 @@ import {
 } from "@/lib/permissions";
 
 export type FormState = { error?: string; ok?: boolean } | undefined;
+
+// Pobiera dane stowarzyszenia z API KRS po numerze. Wywoływana z klienta
+// (przycisk „Pobierz dane z KRS"). Wymaga zalogowania.
+export async function lookupKrs(krs: string): Promise<KrsLookupResult> {
+  const session = await auth();
+  if (!session?.user) {
+    return { ok: false, error: "Musisz być zalogowany." };
+  }
+  return fetchKrsData(krs);
+}
 
 // Aktualizuje dane stowarzyszenia (dane podstawowe + adres siedziby). Wymaga SETTINGS WRITE.
 export async function updateOrganizationDetails(
@@ -98,8 +109,19 @@ export async function createOrganization(
     };
   }
 
+  const str = (key: string) => String(formData.get(key) ?? "");
   const parsed = createOrganizationSchema.safeParse({
-    name: formData.get("name"),
+    name: str("name"),
+    krs: str("krs"),
+    nip: str("nip"),
+    regon: str("regon"),
+    foundedYear: str("foundedYear"),
+    street: str("street"),
+    postalCode: str("postalCode"),
+    city: str("city"),
+    contactEmail: str("contactEmail"),
+    phone: str("phone"),
+    description: str("description"),
   });
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "Nieprawidłowe dane." };
@@ -118,7 +140,23 @@ export async function createOrganization(
 
   await prisma.$transaction(async (tx) => {
     const org = await tx.organization.create({
-      data: { name: parsed.data.name, slug, inviteToken: generateInviteToken() },
+      data: {
+        name: parsed.data.name,
+        slug,
+        inviteToken: generateInviteToken(),
+        // Dane rejestrowe (z KRS) — wymagane.
+        krs: parsed.data.krs,
+        nip: parsed.data.nip,
+        regon: parsed.data.regon,
+        foundedYear: parsed.data.foundedYear,
+        street: parsed.data.street,
+        postalCode: parsed.data.postalCode,
+        city: parsed.data.city,
+        // Dane kontaktowe — opcjonalne.
+        contactEmail: parsed.data.contactEmail,
+        phone: parsed.data.phone,
+        description: parsed.data.description,
+      },
     });
     // Dwie domyślne role: Prezes (pełne, zablokowana) i Członek (domyślna).
     const ownerRole = await tx.role.create({

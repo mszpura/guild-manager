@@ -79,17 +79,19 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  // Dane rejestrowe i kontaktowe stowarzyszenia (opcjonalne).
-  krs          String?
+  // Dane rejestrowe stowarzyszenia (zaciągane z KRS przy zakładaniu) — wymagane.
+  krs          String
+  foundedYear  Int
+  // Adres siedziby (rozbity) — wymagany.
+  street       String
+  postalCode   String
+  city         String
+  // NIP/REGON — opcjonalne (KRS nie zawsze je zwraca dla stowarzyszeń/fundacji).
   nip          String?
   regon        String?
-  foundedYear  Int?
+  // Dane kontaktowe i opis — opcjonalne.
   contactEmail String?
   phone        String?
-  // Adres siedziby (rozbity).
-  street       String?
-  postalCode   String?
-  city         String?
   description  String?
   // Logo stowarzyszenia jako data URL (image/png|jpeg) zapisane wprost w bazie —
   // renderuje się bezpośrednio w <img>, także na drukowanych dokumentach.
