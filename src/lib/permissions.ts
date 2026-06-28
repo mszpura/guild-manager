@@ -38,7 +38,8 @@ export const OWNER_PERMISSIONS: Permissions = Object.fromEntries(
 export const MEMBER_PERMISSIONS: Permissions = {
   MEMBERS: "READ",
   APPLICATIONS: "NONE",
-  MEETINGS: "NONE",
+  // Członek widzi nadchodzące spotkania (odczyt).
+  MEETINGS: "READ",
   // Członek widzi rejestr uchwał i może brać udział w głosowaniach online.
   RESOLUTIONS: "READ",
   SETTINGS: "NONE",
@@ -67,13 +68,13 @@ export const BOARD_MEMBER_PERMISSIONS: Permissions = {
 };
 
 export const TREASURER_PERMISSIONS: Permissions = {
-  // Skarbnik: na razie takie same uprawnienia jak Członek Zarządu.
-  // Dedykowana zakładka skarbnika dojdzie w przyszłości.
-  MEMBERS: "WRITE",
-  APPLICATIONS: "WRITE",
-  MEETINGS: "WRITE",
-  RESOLUTIONS: "WRITE",
-  SETTINGS: "READ",
+  // Skarbnik: odczyt zgłoszeń, spotkań i uchwał (bez zarządzania członkami
+  // i ustawieniami). Dedykowana zakładka skarbnika dojdzie w przyszłości.
+  MEMBERS: "NONE",
+  APPLICATIONS: "READ",
+  MEETINGS: "READ",
+  RESOLUTIONS: "READ",
+  SETTINGS: "NONE",
 };
 
 // Bezpiecznie odczytuje poziom dla obszaru z dowolnego JSON-a (domyślnie NONE).
