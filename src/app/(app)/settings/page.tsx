@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { ApplicationFieldsManager } from "@/components/application-fields-manager";
+import { FormFieldSettings } from "@/components/form-field-settings";
 import { PaymentSettings } from "@/components/payment-settings";
 import { RolesManager } from "@/components/roles-manager";
 import { OrgDetailsForm } from "@/components/org-details-form";
@@ -19,7 +20,8 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 
-const FIXED_FIELDS = ["Imię", "Nazwisko", "Adres e-mail", "Data urodzenia"];
+// Pola zawsze obecne na formularzu (nie podlegają konfiguracji).
+const FIXED_FIELDS = ["Imię", "Nazwisko", "Adres e-mail"];
 
 export default async function SettingsPage() {
   const data = await getActiveOrg();
@@ -52,6 +54,9 @@ export default async function SettingsPage() {
         membershipPaid: true,
         feeDueMonth: true,
         feeDueDay: true,
+        formBirthDate: true,
+        formPhone: true,
+        formAddress: true,
       },
     }),
     prisma.paymentTier.findMany({
@@ -147,6 +152,19 @@ export default async function SettingsPage() {
                     </li>
                   ))}
                 </ul>
+              </div>
+              <div>
+                <h3 className="mb-2 text-sm font-medium text-muted-foreground">
+                  Pola standardowe
+                </h3>
+                <FormFieldSettings
+                  organizationId={orgId}
+                  modes={{
+                    birthDate: org?.formBirthDate ?? "REQUIRED",
+                    phone: org?.formPhone ?? "HIDDEN",
+                    address: org?.formAddress ?? "HIDDEN",
+                  }}
+                />
               </div>
               <div>
                 <h3 className="mb-2 text-sm font-medium text-muted-foreground">

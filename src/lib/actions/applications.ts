@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/tenant";
-import { applicationSchema } from "@/lib/validations";
+import { buildApplicationSchema } from "@/lib/validations";
 import { sendWelcomeEmail, sendPaymentLinkEmail } from "@/lib/email";
 import { getStripe, createCheckoutSession } from "@/lib/stripe";
 import { formatPLN } from "@/lib/money";
@@ -23,23 +23,17 @@ export async function submitApplication(
   _prev: ApplicationFormState,
   formData: FormData,
 ): Promise<ApplicationFormState> {
-  const parsed = applicationSchema.safeParse({
-    firstName: formData.get("firstName"),
-    lastName: formData.get("lastName"),
-    email: formData.get("email"),
-    birthDate: formData.get("birthDate"),
-  });
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "Nieprawidłowe dane." };
-  }
-
   // Stowarzyszenie identyfikowane wyłącznie przez aktywny token (tajność = dostęp).
+  // Pobierane przed walidacją, bo schemat pól standardowych zależy od konfiguracji.
   const org = await prisma.organization.findFirst({
     where: { inviteToken: token, inviteEnabled: true },
     select: {
       id: true,
       name: true,
       membershipPaid: true,
+      formBirthDate: true,
+      formPhone: true,
+      formAddress: true,
       applicationFields: {
         orderBy: { order: "asc" },
         select: { id: true, label: true, required: true },
@@ -54,6 +48,24 @@ export async function submitApplication(
     return { error: "Ten link zaproszeniowy jest nieaktywny lub nieprawidłowy." };
   }
 
+  // Walidacja zależna od trybów pól standardowych (ukryte pomijamy w całości).
+  const schema = buildApplicationSchema({
+    birthDate: org.formBirthDate,
+    phone: org.formPhone,
+    address: org.formAddress,
+  });
+  const parsed = schema.safeParse({
+    firstName: formData.get("firstName"),
+    lastName: formData.get("lastName"),
+    email: formData.get("email"),
+    birthDate: formData.get("birthDate"),
+    phone: formData.get("phone"),
+    address: formData.get("address"),
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Nieprawidłowe dane." };
+  }
+
   // Walidacja i migawka pól własnych. Dane publiczne → walidujemy po stronie serwera.
   const customData: { label: string; value: string }[] = [];
   for (const field of org.applicationFields) {
@@ -64,7 +76,19 @@ export async function submitApplication(
     if (value) customData.push({ label: field.label, value });
   }
 
-  const { firstName, lastName, email, birthDate } = parsed.data;
+  // Pola standardowe wg konfiguracji: ukryte → undefined, opcjonalne puste → null.
+  const data = parsed.data as {
+    firstName: string;
+    lastName: string;
+    email: string;
+    birthDate?: Date | null;
+    phone?: string | null;
+    address?: string | null;
+  };
+  const { firstName, lastName, email } = data;
+  const birthDate = data.birthDate ?? null;
+  const phone = data.phone ?? null;
+  const address = data.address ?? null;
 
   // Reguła: jeden e-mail = jeden członek danego stowarzyszenia.
   const alreadyMember = await prisma.member.findUnique({
@@ -113,6 +137,8 @@ export async function submitApplication(
       lastName,
       email,
       birthDate,
+      phone,
+      address,
       customData: customData.length > 0 ? customData : undefined,
       // Pominięcie płatności online pozostawia status „oczekuje" — administrator
       // potwierdza wpłatę (np. przelew) przy rozpatrywaniu zgłoszenia.
@@ -202,7 +228,12 @@ export async function approveApplication(applicationId: string) {
         firstName: application.firstName,
         lastName: application.lastName,
         email: application.email,
+        // Dane ze zgłoszenia przenoszone do ewidencji członka (pola standardowe
+        // wg konfiguracji formularza + migawka pól własnych).
         birthDate: application.birthDate,
+        phone: application.phone,
+        address: application.address,
+        customData: application.customData ?? undefined,
       },
     });
     await tx.membershipApplication.update({

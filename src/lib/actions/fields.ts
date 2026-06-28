@@ -4,8 +4,36 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireMember } from "@/lib/tenant";
 import { applicationFieldSchema } from "@/lib/validations";
+import { FormFieldMode } from "@/generated/prisma/client";
 
 export type FieldFormState = { error?: string; ok?: boolean } | undefined;
+
+const FORM_FIELD_MODES = Object.values(FormFieldMode) as string[];
+
+// Zapisuje tryby pól standardowych formularza (data urodzenia / telefon / adres):
+// ukryte, nieobowiązkowe albo obowiązkowe. SETTINGS WRITE.
+export async function setFormFieldModes(
+  organizationId: string,
+  modes: { birthDate: string; phone: string; address: string },
+): Promise<void> {
+  await requireMember(organizationId, "SETTINGS", "WRITE");
+
+  const valid = (v: string): v is FormFieldMode => FORM_FIELD_MODES.includes(v);
+  if (!valid(modes.birthDate) || !valid(modes.phone) || !valid(modes.address)) {
+    throw new Error("Nieprawidłowy tryb pola.");
+  }
+
+  await prisma.organization.update({
+    where: { id: organizationId },
+    data: {
+      formBirthDate: modes.birthDate,
+      formPhone: modes.phone,
+      formAddress: modes.address,
+    },
+  });
+
+  revalidatePath("/settings");
+}
 
 // Dodaje pole własne do formularza zgłoszeniowego. OWNER/BOARD.
 export async function addApplicationField(

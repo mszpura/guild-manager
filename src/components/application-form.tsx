@@ -13,17 +13,21 @@ import { Field, FieldLabel, FieldError } from "@/components/ui/field";
 
 type CustomField = { id: string; label: string; required: boolean };
 type Tier = { id: string; label: string; amount: number };
+type FieldMode = "HIDDEN" | "OPTIONAL" | "REQUIRED";
+type FieldModes = { birthDate: FieldMode; phone: FieldMode; address: FieldMode };
 
 export function ApplicationForm({
   token,
   organizationName,
   customFields = [],
+  fieldModes,
   paid = false,
   tiers = [],
 }: {
   token: string;
   organizationName: string;
   customFields?: CustomField[];
+  fieldModes: FieldModes;
   paid?: boolean;
   tiers?: Tier[];
 }) {
@@ -63,10 +67,50 @@ export function ApplicationForm({
         <FieldLabel htmlFor="email">Adres e-mail</FieldLabel>
         <Input id="email" name="email" type="email" required />
       </Field>
-      <Field>
-        <FieldLabel htmlFor="birthDate">Data urodzenia</FieldLabel>
-        <Input id="birthDate" name="birthDate" type="date" required />
-      </Field>
+
+      {fieldModes.birthDate !== "HIDDEN" ? (
+        <Field>
+          <FieldLabel htmlFor="birthDate">
+            Data urodzenia
+            {fieldModes.birthDate === "REQUIRED" ? " *" : ""}
+          </FieldLabel>
+          <Input
+            id="birthDate"
+            name="birthDate"
+            type="date"
+            required={fieldModes.birthDate === "REQUIRED"}
+          />
+        </Field>
+      ) : null}
+
+      {fieldModes.phone !== "HIDDEN" ? (
+        <Field>
+          <FieldLabel htmlFor="phone">
+            Numer telefonu
+            {fieldModes.phone === "REQUIRED" ? " *" : ""}
+          </FieldLabel>
+          <Input
+            id="phone"
+            name="phone"
+            type="tel"
+            required={fieldModes.phone === "REQUIRED"}
+          />
+        </Field>
+      ) : null}
+
+      {fieldModes.address !== "HIDDEN" ? (
+        <Field>
+          <FieldLabel htmlFor="address">
+            Adres zamieszkania
+            {fieldModes.address === "REQUIRED" ? " *" : ""}
+          </FieldLabel>
+          <Input
+            id="address"
+            name="address"
+            required={fieldModes.address === "REQUIRED"}
+          />
+        </Field>
+      ) : null}
 
       {customFields.map((f) => (
         <Field key={f.id}>

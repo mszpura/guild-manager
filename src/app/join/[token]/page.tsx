@@ -22,6 +22,9 @@ export default async function JoinPage({
     select: {
       name: true,
       membershipPaid: true,
+      formBirthDate: true,
+      formPhone: true,
+      formAddress: true,
       applicationFields: {
         orderBy: { order: "asc" },
         select: { id: true, label: true, required: true },
@@ -50,6 +53,11 @@ export default async function JoinPage({
                 token={token}
                 organizationName={org.name}
                 customFields={org.applicationFields}
+                fieldModes={{
+                  birthDate: org.formBirthDate,
+                  phone: org.formPhone,
+                  address: org.formAddress,
+                }}
                 paid={org.membershipPaid}
                 tiers={org.paymentTiers}
               />

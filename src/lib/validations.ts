@@ -116,34 +116,83 @@ export function validateLogoFile(file: {
   return null;
 }
 
-// Walidacja publicznego formularza zgłoszeniowego (link zapraszający).
-// Dane pochodzą z publicznego źródła — walidujemy je rygorystycznie po stronie serwera.
-export const applicationSchema = z.object({
-  firstName: z
-    .string()
-    .trim()
-    .min(2, "Imię musi mieć co najmniej 2 znaki.")
-    .max(100, "Imię jest za długie."),
-  lastName: z
-    .string()
-    .trim()
-    .min(2, "Nazwisko musi mieć co najmniej 2 znaki.")
-    .max(100, "Nazwisko jest za długie."),
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .email("Podaj poprawny adres e-mail."),
-  birthDate: z.coerce
-    .date({ message: "Podaj poprawną datę urodzenia." })
-    .refine((d) => d <= new Date(), "Data urodzenia nie może być z przyszłości.")
-    .refine(
-      (d) => d >= new Date("1900-01-01"),
-      "Podaj realną datę urodzenia.",
-    ),
-});
+// Tryb pola standardowego formularza — lustro enuma FormFieldMode z bazy.
+// Trzymane jako lokalny union, by validations.ts nie zależał od klienta Prisma.
+export type FieldMode = "HIDDEN" | "OPTIONAL" | "REQUIRED";
 
-export type ApplicationInput = z.infer<typeof applicationSchema>;
+// Walidatory pól standardowych zgłoszenia. Dane z publicznego formularza →
+// walidujemy rygorystycznie po stronie serwera.
+const birthDateValidator = z.coerce
+  .date({ message: "Podaj poprawną datę urodzenia." })
+  .refine((d) => d <= new Date(), "Data urodzenia nie może być z przyszłości.")
+  .refine((d) => d >= new Date("1900-01-01"), "Podaj realną datę urodzenia.");
+
+const phoneValidator = z
+  .string()
+  .trim()
+  .min(3, "Podaj poprawny numer telefonu.")
+  .max(30, "Numer telefonu jest za długi.")
+  .refine(
+    (v) => /^[\d\s+()-]+$/.test(v),
+    "Numer telefonu może zawierać tylko cyfry i znaki + ( ) -.",
+  );
+
+const addressValidator = z
+  .string()
+  .trim()
+  .min(3, "Podaj pełny adres zamieszkania.")
+  .max(200, "Adres jest za długi.");
+
+// Opakowuje walidator pola standardowego w regułę zależną od trybu:
+//  • REQUIRED → wartość wymagana (puste odrzuca walidator własnym komunikatem),
+//  • OPTIONAL → puste/niepodane przechodzi jako null, wpisane jest walidowane,
+//  • HIDDEN  → pole pomijane (obsłużone przy budowie schematu).
+function modal(validator: z.ZodTypeAny, mode: FieldMode) {
+  if (mode === "REQUIRED") {
+    return z.preprocess(
+      (v) => (typeof v === "string" ? v.trim() : v),
+      validator,
+    );
+  }
+  // OPTIONAL: puste/niepodane → null, w przeciwnym razie waliduj.
+  return z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+    validator.nullable(),
+  );
+}
+
+// Buduje schemat publicznego formularza zgłoszeniowego zależnie od konfiguracji
+// pól standardowych stowarzyszenia (data urodzenia / telefon / adres). Pola ukryte
+// są pomijane (nie pojawiają się ani w formularzu, ani w wyniku).
+export function buildApplicationSchema(modes: {
+  birthDate: FieldMode;
+  phone: FieldMode;
+  address: FieldMode;
+}) {
+  const shape: Record<string, z.ZodTypeAny> = {
+    firstName: z
+      .string()
+      .trim()
+      .min(2, "Imię musi mieć co najmniej 2 znaki.")
+      .max(100, "Imię jest za długie."),
+    lastName: z
+      .string()
+      .trim()
+      .min(2, "Nazwisko musi mieć co najmniej 2 znaki.")
+      .max(100, "Nazwisko jest za długie."),
+    email: z.string().trim().toLowerCase().email("Podaj poprawny adres e-mail."),
+  };
+  if (modes.birthDate !== "HIDDEN") {
+    shape.birthDate = modal(birthDateValidator, modes.birthDate);
+  }
+  if (modes.phone !== "HIDDEN") {
+    shape.phone = modal(phoneValidator, modes.phone);
+  }
+  if (modes.address !== "HIDDEN") {
+    shape.address = modal(addressValidator, modes.address);
+  }
+  return z.object(shape);
+}
 
 // Walidacja definicji pola własnego formularza (panel ustawień).
 export const applicationFieldSchema = z.object({

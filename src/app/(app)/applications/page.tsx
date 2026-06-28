@@ -97,10 +97,19 @@ export default async function ApplicationsPage() {
                   {a.firstName} {a.lastName}
                 </TableCell>
                 <TableCell>{a.email}</TableCell>
-                <TableCell>{dateFmt.format(a.birthDate)}</TableCell>
+                <TableCell>
+                  {a.birthDate ? dateFmt.format(a.birthDate) : "—"}
+                </TableCell>
                 <TableCell>
                   {(() => {
-                    const extra = parseCustomData(a.customData);
+                    // Pola standardowe (telefon/adres) + migawka pól własnych razem.
+                    const extra = [
+                      ...(a.phone ? [{ label: "Telefon", value: a.phone }] : []),
+                      ...(a.address
+                        ? [{ label: "Adres", value: a.address }]
+                        : []),
+                      ...parseCustomData(a.customData),
+                    ];
                     if (extra.length === 0)
                       return <span className="text-muted-foreground">—</span>;
                     return (

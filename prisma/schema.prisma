@@ -108,6 +108,13 @@ model Organization {
   feeDueMonth    Int? // 1–12
   feeDueDay      Int? // 1–31 (zależnie od miesiąca)
 
+  // Konfiguracja pól standardowych formularza zgłoszeniowego. Każde pole można
+  // ukryć, uczynić nieobowiązkowym lub obowiązkowym. Data urodzenia domyślnie
+  // wymagana (zgodnie z dotychczasowym zachowaniem), pozostałe domyślnie ukryte.
+  formBirthDate FormFieldMode @default(REQUIRED)
+  formPhone     FormFieldMode @default(HIDDEN)
+  formAddress   FormFieldMode @default(HIDDEN)
+
   members           Member[]
   roles             Role[]
   applications      MembershipApplication[]
@@ -148,6 +155,14 @@ enum ApplicationStatus {
 
 enum FieldType {
   STRING // na razie tylko tekst; enum zostawia miejsce na kolejne typy
+}
+
+// Tryb pola standardowego formularza zgłoszeniowego (data urodzenia, telefon, adres):
+// ukryte na formularzu, opcjonalne (do wypełnienia) lub wymagane.
+enum FormFieldMode {
+  HIDDEN // nie pokazuj pola na formularzu
+  OPTIONAL // pole nieobowiązkowe
+  REQUIRED // pole obowiązkowe
 }
 
 enum PaymentStatus {
@@ -196,7 +211,11 @@ model MembershipApplication {
   firstName String
   lastName  String
   email     String
-  birthDate DateTime
+  // Pola standardowe sterowane konfiguracją formularza (formBirthDate/Phone/Address) —
+  // wszystkie opcjonalne na poziomie bazy; obowiązkowość wymusza walidacja zgłoszenia.
+  birthDate DateTime?
+  phone     String?
+  address   String?
 
   // Odpowiedzi z pól własnych — migawka [{ label, value }] z chwili zgłoszenia.
   customData Json?
@@ -230,6 +249,13 @@ model Member {
   lastName  String? // opcjonalne (np. jednoczłonowa nazwa założyciela)
   email     String
   birthDate DateTime? // opcjonalne (założyciel nie wypełniał formularza)
+  // Dane kontaktowe/adresowe przeniesione ze zgłoszenia (zależnie od konfiguracji
+  // formularza). Opcjonalne — założyciel/import mogą ich nie mieć.
+  phone     String?
+  address   String?
+  // Migawka pól własnych ze zgłoszenia ([{ label, value }]) przeniesiona przy
+  // zatwierdzeniu — pełne dane członka w jednym miejscu.
+  customData Json?
   joinedAt  DateTime  @default(now())
 
   // Przypisany próg składki (z konfiguracji stowarzyszenia). null = nieprzypisany.
