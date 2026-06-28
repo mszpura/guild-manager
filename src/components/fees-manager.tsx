@@ -3,11 +3,23 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, RotateCcw, Search } from "lucide-react";
+import { Check, Search } from "lucide-react";
 import { setFeePaid, setMemberTier } from "@/lib/actions/fees";
 import { formatPLN } from "@/lib/money";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+
+const selectClass =
+  "h-9 rounded-md border bg-card px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
 export type FeeStatus = "PAID" | "OVERDUE" | "PENDING";
 export type CycleStatus = FeeStatus | "NA";
@@ -212,6 +224,137 @@ function TierSelect({
   );
 }
 
+// Formularz rozliczenia składki: wybór okresu i typu składki. W starszym okresie
+// członek mógł mieć inną składkę, dlatego próg wybiera się tu osobno (nie bierzemy
+// na sztywno aktualnie przypisanego).
+function SettleFeeDialog({
+  memberId,
+  memberName,
+  year,
+  cycles,
+  tiers,
+  currentTierId,
+}: {
+  memberId: string;
+  memberName: string;
+  year: number;
+  cycles: FeeCycle[];
+  tiers: FeeTier[];
+  currentTierId: string | null;
+}) {
+  const router = useRouter();
+  // Okresy do rozliczenia = cykle dotyczące członka (bez „nie dotyczy").
+  const periods = cycles.filter((c) => c.status !== "NA");
+  // Domyślnie pierwszy nieopłacony okres, w razie braku — bieżący rok.
+  const defaultYear = String(periods.find((c) => c.status !== "PAID")?.year ?? year);
+
+  const [open, setOpen] = useState(false);
+  const [yearSel, setYearSel] = useState(defaultYear);
+  const [tierSel, setTierSel] = useState(currentTierId ?? "");
+  const [saving, startSave] = useTransition();
+
+  const selected = periods.find((c) => String(c.year) === yearSel);
+  const isPaid = selected?.status === "PAID";
+
+  function submit() {
+    startSave(async () => {
+      try {
+        if (isPaid) {
+          await setFeePaid(memberId, Number(yearSel), false);
+          toast.success(`Cofnięto rozliczenie składki za ${yearSel}.`);
+        } else {
+          await setFeePaid(memberId, Number(yearSel), true, tierSel);
+          toast.success(`Rozliczono składkę za ${yearSel}.`);
+        }
+        router.refresh();
+        setOpen(false);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Nie udało się zapisać.");
+      }
+    });
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        if (o) {
+          setYearSel(defaultYear);
+          setTierSel(currentTierId ?? "");
+        }
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button type="button" size="sm" variant="outline">
+          <Check className="size-3.5" />
+          Oznacz opłaconą
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Rozlicz składkę</DialogTitle>
+          <DialogDescription>{memberName}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="font-medium">Okres rozliczeniowy</span>
+            <select
+              value={yearSel}
+              onChange={(e) => setYearSel(e.target.value)}
+              className={selectClass}
+            >
+              {periods.map((c) => (
+                <option key={c.year} value={c.year}>
+                  {c.year}
+                  {c.status === "PAID" ? " — opłacona" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {isPaid ? (
+            <p className="text-sm text-muted-foreground">
+              Ten okres jest już rozliczony — możesz cofnąć rozliczenie.
+            </p>
+          ) : (
+            <label className="flex flex-col gap-1.5 text-sm">
+              <span className="font-medium">Typ składki</span>
+              <select
+                value={tierSel}
+                onChange={(e) => setTierSel(e.target.value)}
+                className={selectClass}
+              >
+                <option value="">— wybierz składkę —</option>
+                {tiers.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.label} · {formatPLN(t.amount)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+            Anuluj
+          </Button>
+          <Button
+            type="button"
+            onClick={submit}
+            disabled={saving || (!isPaid && !tierSel)}
+            variant={isPaid ? "destructive" : "default"}
+          >
+            {isPaid ? "Cofnij rozliczenie" : "Oznacz opłaconą"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function FeesManager({
   year,
   rows,
@@ -231,11 +374,8 @@ export function FeesManager({
   arrears: number; // suma zaległości (grosze)
   debtorCount: number; // liczba członków z zaległościami
 }) {
-  const router = useRouter();
   const [filter, setFilter] = useState<Filter>("ALL");
   const [query, setQuery] = useState("");
-  const [pendingId, setPendingId] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
 
   const counts = useMemo(() => {
     const paid = rows.filter((r) => r.status === "PAID").length;
@@ -259,26 +399,6 @@ export function FeesManager({
       return true;
     });
   }, [rows, filter, query]);
-
-  function toggle(row: FeeRow) {
-    const nextPaid = row.status !== "PAID";
-    setPendingId(row.memberId);
-    startTransition(async () => {
-      try {
-        await setFeePaid(row.memberId, year, nextPaid);
-        router.refresh();
-        toast.success(
-          nextPaid
-            ? `Składka za ${year} oznaczona jako opłacona.`
-            : `Cofnięto oznaczenie składki za ${year}.`,
-        );
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Nie udało się zapisać.");
-      } finally {
-        setPendingId(null);
-      }
-    });
-  }
 
   return (
     <div className="space-y-6">
@@ -380,28 +500,14 @@ export function FeesManager({
 
             <div className="flex justify-end">
               {canManage ? (
-                row.status === "PAID" ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggle(row)}
-                    disabled={pendingId === row.memberId}
-                  >
-                    <RotateCcw className="size-3.5" />
-                    Cofnij
-                  </Button>
-                ) : (
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={() => toggle(row)}
-                    disabled={pendingId === row.memberId}
-                  >
-                    <Check className="size-3.5" />
-                    Oznacz opłaconą
-                  </Button>
-                )
+                <SettleFeeDialog
+                  memberId={row.memberId}
+                  memberName={row.name}
+                  year={year}
+                  cycles={row.cycles}
+                  tiers={tiers}
+                  currentTierId={row.tierId}
+                />
               ) : (
                 <span className="text-sm text-muted-foreground">—</span>
               )}

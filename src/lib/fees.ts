@@ -58,14 +58,14 @@ export function summarizeFees<T extends FeeMemberInput>(
       return { year: y, status };
     });
 
-    // Saldo = nieopłacone należne cykle (zaległe + bieżące „do zapłaty") × składka.
-    const unpaidCount = cycles.filter(
-      (c) => c.status === "OVERDUE" || c.status === "PENDING",
-    ).length;
-    const saldo = feeAmount == null ? null : 0 - feeAmount * unpaidCount;
-
     const last = cycles[cycles.length - 1].status;
     const currentStatus = last === "NA" ? "PENDING" : last;
+
+    // Saldo i statystyki dotyczą wyłącznie bieżącego roku. Starszych okresów nie
+    // wliczamy — mogły mieć inną składkę (nie znamy należnej kwoty bez rozliczenia),
+    // więc rozlicza się je ręcznie z poziomu formularza.
+    const saldo =
+      feeAmount == null ? null : currentStatus === "PAID" ? 0 : -feeAmount;
 
     return { member: m, cycles, feeAmount, saldo, currentStatus };
   });

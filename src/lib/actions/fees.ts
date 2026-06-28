@@ -7,8 +7,15 @@ import { requireMember } from "@/lib/tenant";
 // Oznacza składkę członka za dany rok jako opłaconą (paid=true) lub cofa to
 // oznaczenie (paid=false). Wymaga MEMBERS WRITE — operacyjne zarządzanie składkami
 // prowadzi skarbnik/zarząd. Organizacja ustalana z wpisu członka (tenant-scoped).
-// Przy oznaczaniu zapisujemy migawkę kwoty z przypisanego progu na potrzeby statystyk.
-export async function setFeePaid(memberId: string, year: number, paid: boolean) {
+// Przy oznaczaniu zapisujemy migawkę kwoty wybranego progu (tierId) — w starszych
+// okresach członek mógł mieć inną składkę niż obecnie przypisaną. Bez tierId bierzemy
+// aktualnie przypisany próg.
+export async function setFeePaid(
+  memberId: string,
+  year: number,
+  paid: boolean,
+  tierId?: string,
+) {
   const member = await prisma.member.findUnique({
     where: { id: memberId },
     select: {
@@ -23,7 +30,17 @@ export async function setFeePaid(memberId: string, year: number, paid: boolean) 
   if (!Number.isInteger(year)) throw new Error("Nieprawidłowy rok.");
 
   if (paid) {
-    const amount = member.paymentTier?.amount ?? null;
+    let amount = member.paymentTier?.amount ?? null;
+    if (tierId) {
+      const tier = await prisma.paymentTier.findUnique({
+        where: { id: tierId },
+        select: { organizationId: true, amount: true },
+      });
+      if (!tier || tier.organizationId !== member.organizationId) {
+        throw new Error("Nieprawidłowa składka.");
+      }
+      amount = tier.amount;
+    }
     await prisma.membershipFee.upsert({
       where: { memberId_year: { memberId, year } },
       create: { organizationId: member.organizationId, memberId, year, amount },
@@ -34,6 +51,7 @@ export async function setFeePaid(memberId: string, year: number, paid: boolean) 
   }
 
   revalidatePath("/payments");
+  revalidatePath("/dashboard");
 }
 
 // Przypisuje członkowi próg składki (lub czyści przypisanie, gdy tierId puste).
@@ -64,4 +82,5 @@ export async function setMemberTier(memberId: string, tierId: string) {
     data: { paymentTierId: nextTierId },
   });
   revalidatePath("/payments");
+  revalidatePath("/dashboard");
 }
