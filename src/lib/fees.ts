@@ -45,7 +45,7 @@ export function summarizeFees<T extends FeeMemberInput>(
 ): FeeSummary<T> {
   const { feeDueMonth, feeDueDay, foundedYear, now } = config;
   const year = currentFeeYear(now);
-  const years = recentFeeYears(now, 3);
+  const years = recentFeeYears(now, 5);
   const isOverdueYear = (y: number) => isFeeOverdue(feeDueMonth, feeDueDay, y, now);
 
   const results: MemberFeeResult<T>[] = members.map((m) => {

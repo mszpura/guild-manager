@@ -461,7 +461,7 @@ export function FeesManager({
 
       {/* tabela */}
       <div className="overflow-hidden rounded-xl border bg-card">
-        <div className="grid grid-cols-[minmax(180px,1fr)_160px_96px_150px] gap-4 border-b px-5 py-3 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
+        <div className="grid grid-cols-[minmax(180px,1fr)_220px_96px_150px] gap-4 border-b px-5 py-3 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
           <span>Członek</span>
           <span>Okres składkowy</span>
           <span>Saldo</span>
@@ -471,7 +471,7 @@ export function FeesManager({
         {visible.map((row) => (
           <div
             key={row.memberId}
-            className="grid grid-cols-[minmax(180px,1fr)_160px_96px_150px] items-center gap-4 border-b px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40"
+            className="grid grid-cols-[minmax(180px,1fr)_220px_96px_150px] items-center gap-4 border-b px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40"
           >
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
