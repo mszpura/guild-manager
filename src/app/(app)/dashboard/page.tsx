@@ -138,6 +138,7 @@ export default async function DashboardPage() {
             lastName: true,
             joinedAt: true,
             paymentTier: { select: { amount: true } },
+            role: { select: { feeExempt: true } },
             membershipFees: { select: { year: true, amount: true } },
           },
         })
@@ -147,11 +148,14 @@ export default async function DashboardPage() {
   // Podsumowanie składek liczymy tylko gdy członkostwo jest płatne i mamy dostęp.
   const feeSummary =
     canMembers && org?.membershipPaid
-      ? summarizeFees(feeMembers, {
-          feeDueMonth: org.feeDueMonth,
-          feeDueDay: org.feeDueDay,
-          now,
-        })
+      ? summarizeFees(
+          feeMembers.map((m) => ({ ...m, feeExempt: m.role.feeExempt })),
+          {
+            feeDueMonth: org.feeDueMonth,
+            feeDueDay: org.feeDueDay,
+            now,
+          },
+        )
       : null;
 
   // Lista zaległości — najwięksi dłużnicy pierwsi.

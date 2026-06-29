@@ -26,8 +26,8 @@ import { cn } from "@/lib/utils";
 const selectClass =
   "h-9 rounded-md border bg-card px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
-export type FeeStatus = "PAID" | "OVERDUE" | "PENDING";
-export type CycleStatus = FeeStatus | "NA";
+export type FeeStatus = "PAID" | "OVERDUE" | "PENDING" | "EXEMPT";
+export type CycleStatus = "PAID" | "OVERDUE" | "PENDING" | "NA";
 
 export type FeeCycle = {
   year: number;
@@ -61,7 +61,7 @@ const CYCLE_STYLE: Record<
   NA: { label: "Nie dotyczy", mark: "–", color: "#bcc4d4", bg: "#f1f3f8" },
 };
 
-type Filter = "ALL" | "PAID" | "UNPAID";
+type Filter = "ALL" | "PAID" | "UNPAID" | "EXEMPT";
 
 // Polska odmiana: „1 osoba zalega", „2 osoby zalegają", „5 osób zalega".
 function debtorsLabel(n: number): string {
@@ -561,17 +561,23 @@ function FeeRowItem({
 
       {/* składka (próg) opłacana w bieżącym okresie */}
       <div className="min-w-0">
-        <TierSelect
-          memberId={row.memberId}
-          tierId={row.tierId}
-          tiers={tiers}
-          canManage={canManage}
-        />
+        {row.status === "EXEMPT" ? (
+          <span className="block truncate text-sm text-muted-foreground">
+            Zwolniona ze składek
+          </span>
+        ) : (
+          <TierSelect
+            memberId={row.memberId}
+            tierId={row.tierId}
+            tiers={tiers}
+            canManage={canManage}
+          />
+        )}
       </div>
 
       {/* akcja — przypomnienie o nierozliczonej składce */}
       <div className="flex justify-end">
-        {canManage && row.status !== "PAID" ? (
+        {canManage && row.status !== "PAID" && row.status !== "EXEMPT" ? (
           <button
             type="button"
             onClick={remind}
@@ -632,7 +638,9 @@ export function FeesManager({
 
   const counts = useMemo(() => {
     const paid = rows.filter((r) => r.status === "PAID").length;
-    return { all: rows.length, paid, unpaid: rows.length - paid };
+    const exempt = rows.filter((r) => r.status === "EXEMPT").length;
+    // Zwolnieni ze składek nie są ani „opłaceni", ani „nieopłaceni".
+    return { all: rows.length, paid, exempt, unpaid: rows.length - paid - exempt };
   }, [rows]);
 
   // Opłacalność liczona kwotowo (zebrano/naliczono); bez naliczeń — wg liczby wpłat.
@@ -647,7 +655,10 @@ export function FeesManager({
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
       if (filter === "PAID" && r.status !== "PAID") return false;
-      if (filter === "UNPAID" && r.status === "PAID") return false;
+      // „Nieopłacone" pomija też zwolnionych ze składek.
+      if (filter === "UNPAID" && (r.status === "PAID" || r.status === "EXEMPT"))
+        return false;
+      if (filter === "EXEMPT" && r.status !== "EXEMPT") return false;
       if (q && !r.name.toLowerCase().includes(q)) return false;
       return true;
     });
@@ -692,6 +703,13 @@ export function FeesManager({
             onClick={() => setFilter("UNPAID")}
           >
             Nieopłacone
+          </FilterChip>
+          <FilterChip
+            active={filter === "EXEMPT"}
+            count={counts.exempt}
+            onClick={() => setFilter("EXEMPT")}
+          >
+            Zwolnieni
           </FilterChip>
         </div>
         <div className="relative">

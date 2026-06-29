@@ -73,6 +73,8 @@ export default async function SettingsPage() {
         permissions: true,
         isOwner: true,
         isSystem: true,
+        feeExempt: true,
+        canVote: true,
         _count: { select: { members: true } },
       },
     }),
@@ -210,6 +212,8 @@ export default async function SettingsPage() {
               permissions: r.permissions,
               isOwner: r.isOwner,
               isSystem: r.isSystem,
+              feeExempt: r.feeExempt,
+              canVote: r.canVote,
               memberCount: r._count.members,
             }))}
           />

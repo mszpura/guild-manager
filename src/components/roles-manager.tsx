@@ -23,8 +23,38 @@ type RoleItem = {
   permissions: unknown;
   isOwner: boolean;
   isSystem: boolean;
+  feeExempt: boolean;
+  canVote: boolean;
   memberCount: number;
 };
+
+// Przełącznik (checkbox) cechy roli — zwolnienie ze składek / prawo głosu.
+function RoleFlag({
+  name,
+  label,
+  hint,
+  defaultChecked,
+}: {
+  name: string;
+  label: string;
+  hint: string;
+  defaultChecked: boolean;
+}) {
+  return (
+    <label className="flex items-start gap-2.5 text-sm">
+      <input
+        type="checkbox"
+        name={name}
+        defaultChecked={defaultChecked}
+        className="mt-0.5 size-4 shrink-0 rounded border-input accent-primary"
+      />
+      <span>
+        <span className="font-medium text-foreground">{label}</span>
+        <span className="block text-xs text-muted-foreground">{hint}</span>
+      </span>
+    </label>
+  );
+}
 
 // Kolory żetonów uprawnień wg poziomu dostępu — spójne z projektem „Associacion".
 const LEVEL_STYLE: Record<Level, { color: string; bg: string }> = {
@@ -56,6 +86,32 @@ function PermPill({ area, level }: { area: Area; level: Level }) {
         style={{ backgroundColor: s.color }}
       />
       {AREA_LABELS[area]}
+    </span>
+  );
+}
+
+// Żeton cechy roli (prawo głosu / składki) — zawsze widoczny przy każdej roli,
+// żeby na liście było jasne, czy rola głosuje i czy płaci składki.
+function AttrPill({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: "green" | "blue" | "muted";
+}) {
+  const styles: Record<typeof tone, { color: string; bg: string }> = {
+    green: { color: "#2f7d4f", bg: "#e7f1ea" },
+    blue: { color: "#2f5fd0", bg: "#ecf1fc" },
+    muted: { color: "#56627d", bg: "#f1f3f8" },
+  };
+  const s = styles[tone];
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold"
+      style={{ color: s.color, backgroundColor: s.bg }}
+    >
+      <span className="size-1.5 rounded-full" style={{ backgroundColor: s.color }} />
+      {label}
     </span>
   );
 }
@@ -168,6 +224,21 @@ function RoleRow({ role }: { role: RoleItem }) {
 
         <PermGrid permissions={role.permissions} />
 
+        <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:gap-8">
+          <RoleFlag
+            name="canVote"
+            label="Może głosować"
+            hint="Prawo głosu w uchwałach i punktach obrad."
+            defaultChecked={role.canVote}
+          />
+          <RoleFlag
+            name="feeExempt"
+            label="Zwolniona ze składek"
+            hint="Członkowie tej roli nie opłacają składek."
+            defaultChecked={role.feeExempt}
+          />
+        </div>
+
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
         <div className="flex items-center gap-2">
@@ -207,6 +278,16 @@ function RoleRow({ role }: { role: RoleItem }) {
 
       <div className="min-w-0 flex-1">
         <PermPills permissions={role.permissions} />
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <AttrPill
+            label={role.canVote ? "Może głosować" : "Bez prawa głosu"}
+            tone={role.canVote ? "green" : "muted"}
+          />
+          <AttrPill
+            label={role.feeExempt ? "Zwolniona ze składek" : "Opłaca składki"}
+            tone={role.feeExempt ? "muted" : "green"}
+          />
+        </div>
       </div>
 
       {role.isOwner ? (
@@ -266,6 +347,20 @@ function AddRoleRow({
         autoFocus
       />
       <PermGrid permissions={{}} />
+      <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:gap-8">
+        <RoleFlag
+          name="canVote"
+          label="Może głosować"
+          hint="Prawo głosu w uchwałach i punktach obrad."
+          defaultChecked
+        />
+        <RoleFlag
+          name="feeExempt"
+          label="Zwolniona ze składek"
+          hint="Członkowie tej roli nie opłacają składek."
+          defaultChecked={false}
+        />
+      </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
       <div className="flex items-center gap-2">
         <Button type="submit" size="sm" disabled={pending}>

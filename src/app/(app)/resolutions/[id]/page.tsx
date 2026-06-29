@@ -72,15 +72,16 @@ export default async function ResolutionDetailPage({
         id: true,
         firstName: true,
         lastName: true,
-        role: { select: { isOwner: true, permissions: true } },
+        role: { select: { isOwner: true, permissions: true, canVote: true } },
       },
       orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
     }),
   ]);
   if (!resolution) notFound();
 
-  const eligibleMembers = voters.filter((m) =>
-    can(m.role, "RESOLUTIONS", "WRITE"),
+  // Uprawnieni do głosowania = dostęp do panelu Uchwały (WRITE) i rola z prawem głosu.
+  const eligibleMembers = voters.filter(
+    (m) => can(m.role, "RESOLUTIONS", "WRITE") && m.role.canVote,
   );
   const eligibleCount = eligibleMembers.length;
   // Uprawnieni, którzy jeszcze nie oddali głosu (lista pokazywana przy głosowaniu jawnym).
@@ -215,7 +216,7 @@ export default async function ResolutionDetailPage({
               resolutionId={resolution.id}
               tally={tally}
               myChoice={myChoice}
-              canVote={isVoting}
+              canVote={isVoting && me.role.canVote}
               eligibleCount={eligibleCount}
             />
             {isDecided ? (

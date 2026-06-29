@@ -196,6 +196,15 @@ export async function createOrganization(
           name: "Członek Zarządu",
           permissions: BOARD_MEMBER_PERMISSIONS,
         },
+        {
+          // Junior (§8/§11 ust. 2/§13 statutu): te same prawa co członek zwyczajny,
+          // ale bez prawa głosu i ze zwolnieniem ze składek.
+          organizationId: org.id,
+          name: "Junior",
+          permissions: MEMBER_PERMISSIONS,
+          canVote: false,
+          feeExempt: true,
+        },
       ],
     });
     // Twórca staje się członkiem z rolą Prezes (pojawia się na liście członków).

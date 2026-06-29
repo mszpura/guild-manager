@@ -211,6 +211,10 @@ export async function castResolutionVote(
 
   const me = await requireMember(resolution.organizationId, "RESOLUTIONS", "READ");
 
+  if (!me.role.canVote) {
+    throw new Error("Twoja rola nie ma prawa głosu.");
+  }
+
   if (resolution.status !== "VOTING") {
     throw new Error("Głosowanie nad tą uchwałą nie jest otwarte.");
   }

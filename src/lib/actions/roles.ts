@@ -28,6 +28,8 @@ export async function addRole(
         organizationId,
         name: nameResult.data,
         permissions: parsePermissions(formData),
+        feeExempt: formData.get("feeExempt") === "on",
+        canVote: formData.get("canVote") === "on",
       },
     });
   } catch (e) {
@@ -61,8 +63,11 @@ export async function updateRole(
   }
 
   // Nazwę zmieniamy tylko dla ról niesystemowych (Członek ma stałą nazwę).
+  // Zwolnienie ze składek i prawo głosu można ustawić dla każdej roli poza właścicielską.
   const data: Prisma.RoleUpdateInput = {
     permissions: parsePermissions(formData),
+    feeExempt: formData.get("feeExempt") === "on",
+    canVote: formData.get("canVote") === "on",
   };
   if (!role.isSystem) {
     const nameResult = roleNameSchema.safeParse(formData.get("name"));

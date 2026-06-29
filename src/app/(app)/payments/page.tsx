@@ -45,7 +45,7 @@ export default async function PaymentsPage() {
         joinedAt: true,
         paymentTierId: true,
         paymentTier: { select: { amount: true } },
-        role: { select: { name: true } },
+        role: { select: { name: true, feeExempt: true } },
         // Wszystkie wpłaty członka — potrzebne do salda (zaległości za poprzednie lata).
         membershipFees: { select: { year: true, amount: true } },
       },
@@ -58,12 +58,15 @@ export default async function PaymentsPage() {
     }),
   ]);
 
-  const summary = summarizeFees(members, {
-    feeDueMonth: org?.feeDueMonth,
-    feeDueDay: org?.feeDueDay,
-    foundedYear: org?.foundedYear,
-    now,
-  });
+  const summary = summarizeFees(
+    members.map((m) => ({ ...m, feeExempt: m.role.feeExempt })),
+    {
+      feeDueMonth: org?.feeDueMonth,
+      feeDueDay: org?.feeDueDay,
+      foundedYear: org?.foundedYear,
+      now,
+    },
+  );
   const { year, collected, charged, arrears, debtorCount } = summary;
 
   const rows: FeeRow[] = summary.results.map(({ member: m, cycles, saldo, currentStatus }) => ({

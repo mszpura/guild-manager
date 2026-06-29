@@ -120,6 +120,7 @@ export async function startOwnFeePayment(): Promise<{ error: string } | undefine
       select: {
         email: true,
         joinedAt: true,
+        role: { select: { feeExempt: true } },
         paymentTier: { select: { label: true, amount: true } },
         membershipFees: { select: { year: true, amount: true } },
       },
@@ -128,6 +129,9 @@ export async function startOwnFeePayment(): Promise<{ error: string } | undefine
 
   if (!org || !member) return { error: "Nie znaleziono danych członka." };
   if (!org.membershipPaid) return { error: "Członkostwo jest obecnie bezpłatne." };
+  if (member.role.feeExempt) {
+    return { error: "Twoja rola jest zwolniona ze składek." };
+  }
   if (!getStripe()) {
     return {
       error: "Płatności nie są obecnie skonfigurowane. Skontaktuj się ze skarbnikiem.",
@@ -210,17 +214,21 @@ export async function sendFeeReminders(
       email: true,
       firstName: true,
       joinedAt: true,
+      role: { select: { feeExempt: true } },
       paymentTier: { select: { amount: true } },
       membershipFees: { select: { year: true, amount: true } },
     },
   });
 
-  const summary = summarizeFees(members, {
-    feeDueMonth: org.feeDueMonth,
-    feeDueDay: org.feeDueDay,
-    foundedYear: org.foundedYear,
-    now: new Date(),
-  });
+  const summary = summarizeFees(
+    members.map((m) => ({ ...m, feeExempt: m.role.feeExempt })),
+    {
+      feeDueMonth: org.feeDueMonth,
+      feeDueDay: org.feeDueDay,
+      foundedYear: org.foundedYear,
+      now: new Date(),
+    },
+  );
 
   // Dłużnicy bieżącego roku: saldo ujemne (ma przypisaną składkę i jej nie opłacił).
   const debtors = summary.results.filter(
@@ -266,6 +274,7 @@ export async function sendFeeReminder(
       email: true,
       firstName: true,
       joinedAt: true,
+      role: { select: { feeExempt: true } },
       paymentTier: { select: { amount: true } },
       membershipFees: { select: { year: true, amount: true } },
       organization: {
@@ -286,6 +295,9 @@ export async function sendFeeReminder(
   const org = member.organization;
   if (!org.membershipPaid) {
     return { error: "Członkostwo jest bezpłatne — nie naliczamy składek." };
+  }
+  if (member.role.feeExempt) {
+    return { error: "Ten członek jest zwolniony ze składek." };
   }
 
   const summary = summarizeFees([member], {

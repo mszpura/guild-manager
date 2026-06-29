@@ -399,15 +399,21 @@ export async function castVote(itemId: string, choice: VoteChoice) {
     throw new Error("Nie można głosować nad odrzuconym punktem.");
   }
 
-  // Prawo głosu: rola członka na liście uprawnionych (lub spotkanie otwarte).
+  // Prawo głosu: rola członka musi mieć włączone głosowanie oraz znajdować się na
+  // liście uprawnionych ról (lub spotkanie otwarte dla wszystkich).
+  if (!me.role.canVote) {
+    throw new Error("Twoja rola nie ma prawa głosu.");
+  }
   const allowed = item.meeting.allowedRoles.map((r) => r.roleId);
   if (allowed.length > 0 && !allowed.includes(me.roleId)) {
     throw new Error("Nie masz prawa głosu w tym spotkaniu.");
   }
 
-  // Bez kworum głosowanie jest wstrzymane.
+  // Bez kworum głosowanie jest wstrzymane. Kworum liczymy tylko z członków o rolach
+  // z prawem głosu (spójnie z widokiem spotkania i §17 ust. 3 statutu).
   const memberWhere: Prisma.MemberWhereInput = {
     organizationId: item.meeting.organizationId,
+    role: { is: { canVote: true } },
     ...(allowed.length > 0 ? { roleId: { in: allowed } } : {}),
   };
   const [eligibleTotal, presentCount] = await Promise.all([

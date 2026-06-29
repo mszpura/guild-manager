@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Role" ADD COLUMN     "canVote" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "feeExempt" BOOLEAN NOT NULL DEFAULT false;

@@ -109,7 +109,7 @@ export default async function MeetingDetailPage({
         id: true,
         firstName: true,
         lastName: true,
-        role: { select: { name: true } },
+        role: { select: { name: true, canVote: true } },
       },
     }),
     isManager
@@ -129,7 +129,14 @@ export default async function MeetingDetailPage({
 
   const attTotal = attendees.length;
   const presentCount = attendees.filter((a) => a.present).length;
-  const quorumPct = attTotal > 0 ? Math.round((presentCount / attTotal) * 100) : 0;
+  // Kworum liczymy wyłącznie z członków o rolach z prawem głosu (§17 ust. 3 statutu);
+  // pozostali mogą uczestniczyć i być odnotowani na liście obecności, ale nie wliczają
+  // się do kworum głosowania.
+  const votingAttendees = attendees.filter((a) => a.role.canVote);
+  const quorumBase = votingAttendees.length;
+  const quorumPresent = votingAttendees.filter((a) => a.present).length;
+  const quorumPct =
+    quorumBase > 0 ? Math.round((quorumPresent / quorumBase) * 100) : 0;
   const quorumOk = quorumPct >= QUORUM_THRESHOLD;
 
   const agenda = meeting.agendaItems;
@@ -141,9 +148,11 @@ export default async function MeetingDetailPage({
   const ended = meeting.endedAt !== null;
   const inProgress = !ended && meeting.startsAt <= new Date();
 
-  // Prawo głosu: rola członka jest uprawniona (lub spotkanie otwarte dla wszystkich).
+  // Prawo głosu: rola członka ma włączone głosowanie i jest uprawniona (lub spotkanie
+  // otwarte dla wszystkich).
   const eligibleToVote =
-    allowedRoleIds.length === 0 || allowedRoleIds.includes(me.roleId);
+    me.role.canVote &&
+    (allowedRoleIds.length === 0 || allowedRoleIds.includes(me.roleId));
   // Głosowanie otwarte: spotkanie trwa, członek uprawniony i jest kworum.
   const votingOpen = !ended && eligibleToVote && quorumOk;
   const myInitials = initials(me.firstName, me.lastName);

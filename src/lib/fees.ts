@@ -5,19 +5,24 @@ import { currentFeeYear, recentFeeYears, isFeeOverdue } from "./payments";
 
 export type FeeCycleStatus = "PAID" | "OVERDUE" | "PENDING" | "NA";
 
+// Status bieżącego okresu członka. „EXEMPT" = rola zwolniona ze składek.
+export type CurrentFeeStatus = "PAID" | "OVERDUE" | "PENDING" | "EXEMPT";
+
 // Minimalny kształt członka potrzebny do wyliczeń (pasuje do select-ów Prisma).
 export type FeeMemberInput = {
   joinedAt: Date;
   paymentTier: { amount: number } | null;
   membershipFees: { year: number; amount: number | null }[];
+  // Rola zwolniona ze składek — taki członek nie jest naliczany ani liczony do zaległości.
+  feeExempt?: boolean;
 };
 
 export type MemberFeeResult<T> = {
   member: T;
   cycles: { year: number; status: FeeCycleStatus }[];
   feeAmount: number | null; // roczna składka z przypisanego progu
-  saldo: number | null; // ≤ 0; null gdy brak przypisanej składki
-  currentStatus: "PAID" | "OVERDUE" | "PENDING"; // status bieżącego roku
+  saldo: number | null; // ≤ 0; null gdy brak przypisanej składki / zwolniony
+  currentStatus: CurrentFeeStatus; // status bieżącego roku
 };
 
 export type FeeSummary<T> = {
@@ -49,6 +54,12 @@ export function summarizeFees<T extends FeeMemberInput>(
   const isOverdueYear = (y: number) => isFeeOverdue(feeDueMonth, feeDueDay, y, now);
 
   const results: MemberFeeResult<T>[] = members.map((m) => {
+    // Rola zwolniona ze składek — brak naliczeń i zaległości; okresy oznaczamy „NA".
+    if (m.feeExempt) {
+      const cycles = years.map((y) => ({ year: y, status: "NA" as FeeCycleStatus }));
+      return { member: m, cycles, feeAmount: null, saldo: null, currentStatus: "EXEMPT" as const };
+    }
+
     const paidByYear = new Map(m.membershipFees.map((f) => [f.year, f.amount]));
     const joinYear = m.joinedAt.getFullYear();
     // Najwcześniejszy okres, którego dotyczy składka: rok założenia (gdy znany),
@@ -77,11 +88,13 @@ export function summarizeFees<T extends FeeMemberInput>(
     return { member: m, cycles, feeAmount, saldo, currentStatus };
   });
 
-  const collected = members.reduce((sum, m) => {
+  // Statystyki liczymy wyłącznie dla członków zobowiązanych do składki (pomijamy zwolnionych).
+  const payingMembers = members.filter((m) => !m.feeExempt);
+  const collected = payingMembers.reduce((sum, m) => {
     const fee = m.membershipFees.find((f) => f.year === year);
     return fee ? sum + (fee.amount ?? m.paymentTier?.amount ?? 0) : sum;
   }, 0);
-  const charged = members.reduce(
+  const charged = payingMembers.reduce(
     (sum, m) =>
       m.paymentTier != null && year >= m.joinedAt.getFullYear()
         ? sum + m.paymentTier.amount
@@ -98,8 +111,8 @@ export function summarizeFees<T extends FeeMemberInput>(
   const rate =
     charged > 0
       ? Math.round((collected / charged) * 100)
-      : members.length > 0
-        ? Math.round((paidCount / members.length) * 100)
+      : payingMembers.length > 0
+        ? Math.round((paidCount / payingMembers.length) * 100)
         : 0;
 
   return { year, years, results, collected, charged, arrears, debtorCount, rate };

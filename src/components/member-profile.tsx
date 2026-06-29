@@ -16,7 +16,7 @@ export const memberProfileSelect = {
   address: true,
   customData: true,
   joinedAt: true,
-  role: { select: { name: true } },
+  role: { select: { name: true, feeExempt: true } },
   paymentTier: { select: { label: true, amount: true } },
   membershipFees: { select: { year: true, amount: true } },
 } satisfies Prisma.MemberSelect;
@@ -106,13 +106,14 @@ export function MemberProfile({
 
   // Składki członka — tylko gdy członkostwo jest płatne.
   const feeResult = org?.membershipPaid
-    ? summarizeFees([member], {
+    ? summarizeFees([{ ...member, feeExempt: member.role.feeExempt }], {
         feeDueMonth: org.feeDueMonth,
         feeDueDay: org.feeDueDay,
         foundedYear: org.foundedYear,
         now,
       }).results[0]
     : null;
+  const isExempt = feeResult?.currentStatus === "EXEMPT";
 
   const paidByYear = new Map(member.membershipFees.map((f) => [f.year, f.amount]));
   const dueDate = formatFeeDueDate(org?.feeDueMonth, org?.feeDueDay);
@@ -270,12 +271,20 @@ export function MemberProfile({
                     Składki
                   </h3>
                   <div className="mt-1 text-sm text-muted-foreground">
-                    {member.paymentTier
-                      ? `${member.paymentTier.label} · ${formatPLN(member.paymentTier.amount)} / rok`
-                      : "Składka nieprzypisana"}
+                    {isExempt
+                      ? "Twoja rola jest zwolniona ze składek"
+                      : member.paymentTier
+                        ? `${member.paymentTier.label} · ${formatPLN(member.paymentTier.amount)} / rok`
+                        : "Składka nieprzypisana"}
                   </div>
                 </div>
-                {feeResult.currentStatus === "PAID" ? (
+                {isExempt ? (
+                  <div className="flex items-center gap-2 rounded-[10px] bg-[#f1f3f8] px-3.5 py-2">
+                    <span className="text-sm font-bold text-[#56627d]">
+                      Zwolniony ze składek
+                    </span>
+                  </div>
+                ) : feeResult.currentStatus === "PAID" ? (
                   <div className="flex items-center gap-2 rounded-[10px] bg-[#e7f1ea] px-3.5 py-2">
                     <span className="flex size-5 items-center justify-center rounded-full bg-[#2f7d4f] text-xs font-bold text-white">
                       ✓
@@ -315,14 +324,21 @@ export function MemberProfile({
               ) : null}
             </div>
 
-            {/* historia składek */}
-            <div className="grid grid-cols-[1fr_90px_110px_84px] gap-3 border-b px-6 py-3 text-[11px] font-bold tracking-wide text-muted-foreground">
-              <span>OKRES</span>
-              <span>KWOTA</span>
-              <span>TERMIN</span>
-              <span className="text-right">STATUS</span>
-            </div>
-            {dues.map((d) => {
+            {/* historia składek (pomijana dla ról zwolnionych ze składek) */}
+            {isExempt ? (
+              <p className="px-6 py-6 text-sm text-muted-foreground">
+                Członkowie z tą rolą nie opłacają składek, więc nie prowadzimy dla
+                nich historii rozliczeń.
+              </p>
+            ) : (
+              <>
+                <div className="grid grid-cols-[1fr_90px_110px_84px] gap-3 border-b px-6 py-3 text-[11px] font-bold tracking-wide text-muted-foreground">
+                  <span>OKRES</span>
+                  <span>KWOTA</span>
+                  <span>TERMIN</span>
+                  <span className="text-right">STATUS</span>
+                </div>
+                {dues.map((d) => {
               const badge = STATUS_BADGE[d.status];
               return (
                 <div
@@ -350,7 +366,9 @@ export function MemberProfile({
                   </div>
                 </div>
               );
-            })}
+                })}
+              </>
+            )}
           </div>
         ) : (
           <div className="rounded-xl border bg-card p-8 text-center">

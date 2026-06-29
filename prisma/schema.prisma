@@ -136,6 +136,11 @@ model Role {
   isOwner     Boolean  @default(false) // pełne uprawnienia, zablokowana do edycji/usuwania
   isSystem    Boolean  @default(false) // Prezes/Członek — nieusuwalne
   isDefault   Boolean  @default(false) // rola nadawana zatwierdzonym zgłoszeniom (Członek)
+  // Rola zwolniona z opłacania składek (np. Junior, Członek Honorowy) — członkowie z
+  // taką rolą nie są obciążani składką ani liczeni do zaległości/opłacalności.
+  feeExempt   Boolean  @default(false)
+  // Czy rola ma prawo głosu (głosowania nad uchwałami i punktami porządku obrad).
+  canVote     Boolean  @default(true)
   createdAt   DateTime @default(now())
 
   members      Member[]

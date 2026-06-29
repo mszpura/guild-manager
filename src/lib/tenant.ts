@@ -14,7 +14,7 @@ export const getSession = cache(async () => auth());
 const memberWithOrgSelect = {
   id: true,
   organizationId: true,
-  role: { select: { id: true, name: true, isOwner: true, permissions: true } },
+  role: { select: { id: true, name: true, isOwner: true, permissions: true, canVote: true } },
   organization: { select: { id: true, name: true } },
 } satisfies Prisma.MemberSelect;
 
@@ -69,7 +69,7 @@ export async function requireMember(
   const member = await prisma.member.findUnique({
     where: { organizationId_email: { organizationId, email } },
     include: {
-      role: { select: { id: true, name: true, isOwner: true, permissions: true } },
+      role: { select: { id: true, name: true, isOwner: true, permissions: true, canVote: true } },
     },
   });
 
