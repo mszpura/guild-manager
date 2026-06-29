@@ -253,3 +253,67 @@ export async function sendFeeReminders(
 
   return { sent, failed, total: debtors.length };
 }
+
+// Wysyła pojedyncze przypomnienie e-mail do wskazanego członka, gdy jego składka
+// za bieżący rok jest nierozliczona. Wymaga MEMBERS WRITE. Zwraca ok albo komunikat.
+export async function sendFeeReminder(
+  memberId: string,
+): Promise<{ ok: true } | { error: string }> {
+  const member = await prisma.member.findUnique({
+    where: { id: memberId },
+    select: {
+      organizationId: true,
+      email: true,
+      firstName: true,
+      joinedAt: true,
+      paymentTier: { select: { amount: true } },
+      membershipFees: { select: { year: true, amount: true } },
+      organization: {
+        select: {
+          name: true,
+          membershipPaid: true,
+          feeDueMonth: true,
+          feeDueDay: true,
+          foundedYear: true,
+        },
+      },
+    },
+  });
+  if (!member) return { error: "Członek nie istnieje." };
+
+  await requireMember(member.organizationId, "MEMBERS", "WRITE");
+
+  const org = member.organization;
+  if (!org.membershipPaid) {
+    return { error: "Członkostwo jest bezpłatne — nie naliczamy składek." };
+  }
+
+  const summary = summarizeFees([member], {
+    feeDueMonth: org.feeDueMonth,
+    feeDueDay: org.feeDueDay,
+    foundedYear: org.foundedYear,
+    now: new Date(),
+  });
+  const result = summary.results[0];
+  if (!(result.saldo != null && result.saldo < 0 && result.feeAmount != null)) {
+    return { error: "Składka za bieżący rok jest już rozliczona." };
+  }
+
+  const h = await headers();
+  const host = h.get("host");
+  const profileUrl = host
+    ? `${h.get("x-forwarded-proto") ?? "http"}://${host}/profile`
+    : null;
+
+  const ok = await sendFeeReminderEmail({
+    to: member.email,
+    firstName: member.firstName,
+    organizationName: org.name,
+    year: summary.year,
+    amountText: formatPLN(result.feeAmount),
+    dueText: formatFeeDueDate(org.feeDueMonth, org.feeDueDay),
+    profileUrl,
+  });
+
+  return ok ? { ok: true } : { error: "Nie udało się wysłać przypomnienia." };
+}

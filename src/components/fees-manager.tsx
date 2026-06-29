@@ -3,8 +3,13 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Bell, Check, Search } from "lucide-react";
-import { setFeePaid, setMemberTier, sendFeeReminders } from "@/lib/actions/fees";
+import { Bell, Search } from "lucide-react";
+import {
+  setFeePaid,
+  setMemberTier,
+  sendFeeReminders,
+  sendFeeReminder,
+} from "@/lib/actions/fees";
 import { formatPLN } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import {
@@ -246,12 +251,26 @@ function FilterChip({
 }
 
 // Pojedyncza komórka cyklu składkowego — etykieta okresu + kolorowy znacznik.
-function CycleCell({ cycle }: { cycle: FeeCycle }) {
+// Z `onClick` staje się klikalna (otwiera rozliczenie składki za dany rok).
+function CycleCell({ cycle, onClick }: { cycle: FeeCycle; onClick?: () => void }) {
   const s = CYCLE_STYLE[cycle.status];
+  const interactive = !!onClick;
   return (
-    <div
-      className="flex flex-col items-center gap-1"
-      title={`${cycle.label}: ${s.label}`}
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!interactive}
+      className={cn(
+        "flex flex-col items-center gap-1 rounded-md",
+        interactive
+          ? "cursor-pointer transition-opacity hover:opacity-70"
+          : "cursor-default",
+      )}
+      title={
+        interactive
+          ? `${cycle.label}: ${s.label} — kliknij, aby rozliczyć`
+          : `${cycle.label}: ${s.label}`
+      }
     >
       <span className="font-mono text-[9.5px] text-muted-foreground">
         {cycle.short}
@@ -262,7 +281,7 @@ function CycleCell({ cycle }: { cycle: FeeCycle }) {
       >
         {s.mark}
       </span>
-    </div>
+    </button>
   );
 }
 
@@ -328,6 +347,9 @@ function TierSelect({
 // członek mógł mieć inną składkę, dlatego próg wybiera się tu osobno (nie bierzemy
 // na sztywno aktualnie przypisanego).
 function SettleFeeDialog({
+  open,
+  onOpenChange,
+  initialYear,
   memberId,
   memberName,
   year,
@@ -336,6 +358,9 @@ function SettleFeeDialog({
   tiers,
   currentTierId,
 }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  initialYear: number | null; // rok klikniętej komórki — podstawiany przy otwarciu
   memberId: string;
   memberName: string;
   year: number;
@@ -355,13 +380,23 @@ function SettleFeeDialog({
     }
     return list;
   }, [foundedYear, year, paidYears]);
-  // Domyślnie pierwszy nieopłacony okres (od najnowszego), w razie braku — bieżący rok.
-  const defaultYear = String(periods.find((p) => !p.paid)?.year ?? year);
 
-  const [open, setOpen] = useState(false);
-  const [yearSel, setYearSel] = useState(defaultYear);
+  const [yearSel, setYearSel] = useState(String(year));
   const [tierSel, setTierSel] = useState(currentTierId ?? "");
   const [saving, startSave] = useTransition();
+
+  // Przy każdym otwarciu ustaw okres: kliknięty rok (initialYear), a gdy go brak —
+  // pierwszy nieopłacony (od najnowszego), inaczej bieżący. Wzorzec „dostosuj stan
+  // przy zmianie propsa w trakcie renderu" — bez useEffect (zob. react.dev).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
+      const firstUnpaid = periods.find((p) => !p.paid)?.year ?? year;
+      setYearSel(String(initialYear ?? firstUnpaid));
+      setTierSel(currentTierId ?? "");
+    }
+  }
 
   const selected = periods.find((p) => String(p.year) === yearSel);
   const isPaid = selected?.paid ?? false;
@@ -377,7 +412,7 @@ function SettleFeeDialog({
           toast.success(`Rozliczono składkę za ${yearSel}.`);
         }
         router.refresh();
-        setOpen(false);
+        onOpenChange(false);
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "Nie udało się zapisać.");
       }
@@ -385,22 +420,7 @@ function SettleFeeDialog({
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        setOpen(o);
-        if (o) {
-          setYearSel(defaultYear);
-          setTierSel(currentTierId ?? "");
-        }
-      }}
-    >
-      <DialogTrigger asChild>
-        <Button type="button" size="sm" variant="outline">
-          <Check className="size-3.5" />
-          Oznacz opłaconą
-        </Button>
-      </DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Rozlicz składkę</DialogTitle>
@@ -448,7 +468,7 @@ function SettleFeeDialog({
         </div>
 
         <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
             Anuluj
           </Button>
           <Button
@@ -462,6 +482,125 @@ function SettleFeeDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// Wiersz listy składek. Komórki kolumny „Okres składkowy" są klikalne i otwierają
+// okno rozliczenia z podstawionym rokiem klikniętego okresu (zastępuje dawny przycisk
+// „Oznacz opłaconą"). Kolumna „Akcja" pozwala wysłać przypomnienie, gdy bieżąca
+// składka nie jest rozliczona.
+function FeeRowItem({
+  row,
+  year,
+  foundedYear,
+  tiers,
+  canManage,
+}: {
+  row: FeeRow;
+  year: number;
+  foundedYear: number | null;
+  tiers: FeeTier[];
+  canManage: boolean;
+}) {
+  const [settleOpen, setSettleOpen] = useState(false);
+  const [settleYear, setSettleYear] = useState<number | null>(null);
+  const [reminding, startRemind] = useTransition();
+
+  function openSettle(y: number) {
+    setSettleYear(y);
+    setSettleOpen(true);
+  }
+
+  function remind() {
+    startRemind(async () => {
+      const result = await sendFeeReminder(row.memberId);
+      if ("error" in result) toast.error(result.error);
+      else toast.success(`Wysłano przypomnienie do ${row.name}.`);
+    });
+  }
+
+  return (
+    <div className="grid grid-cols-[minmax(180px,1fr)_220px_96px_260px_150px] items-center gap-4 border-b px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40">
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
+          {row.initials}
+        </span>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-foreground">
+            {row.name}
+          </div>
+          <div className="mt-0.5 truncate text-xs text-muted-foreground">
+            {row.roleName}
+          </div>
+        </div>
+      </div>
+
+      {/* okres składkowy — klikalne komórki otwierają rozliczenie z danym rokiem */}
+      <div className="flex gap-2">
+        {row.cycles.map((c) => (
+          <CycleCell
+            key={c.year}
+            cycle={c}
+            onClick={
+              canManage && c.status !== "NA" ? () => openSettle(c.year) : undefined
+            }
+          />
+        ))}
+      </div>
+
+      <div
+        className={cn(
+          "font-mono text-[13px]",
+          row.saldo != null && row.saldo < 0
+            ? "font-semibold text-destructive"
+            : "text-muted-foreground",
+        )}
+      >
+        {row.saldo == null ? "—" : formatPLN(row.saldo)}
+      </div>
+
+      {/* składka (próg) opłacana w bieżącym okresie */}
+      <div className="min-w-0">
+        <TierSelect
+          memberId={row.memberId}
+          tierId={row.tierId}
+          tiers={tiers}
+          canManage={canManage}
+        />
+      </div>
+
+      {/* akcja — przypomnienie o nierozliczonej składce */}
+      <div className="flex justify-end">
+        {canManage && row.status !== "PAID" ? (
+          <button
+            type="button"
+            onClick={remind}
+            disabled={reminding}
+            className="flex items-center gap-1.5 rounded-lg border border-destructive/30 bg-card px-3 py-1.5 text-xs font-semibold text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-60"
+          >
+            <Bell className="size-3.5" />
+            {reminding ? "Wysyłam…" : "Przypomnij"}
+          </button>
+        ) : (
+          <span className="text-sm text-muted-foreground">—</span>
+        )}
+      </div>
+
+      {canManage ? (
+        <SettleFeeDialog
+          open={settleOpen}
+          onOpenChange={setSettleOpen}
+          initialYear={settleYear}
+          memberId={row.memberId}
+          memberName={row.name}
+          year={year}
+          foundedYear={foundedYear}
+          paidYears={row.paidYears}
+          tiers={tiers}
+          currentTierId={row.tierId}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -577,67 +716,14 @@ export function FeesManager({
         </div>
 
         {visible.map((row) => (
-          <div
+          <FeeRowItem
             key={row.memberId}
-            className="grid grid-cols-[minmax(180px,1fr)_220px_96px_260px_150px] items-center gap-4 border-b px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40"
-          >
-            <div className="flex min-w-0 items-center gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
-                {row.initials}
-              </span>
-              <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-foreground">
-                  {row.name}
-                </div>
-                <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                  {row.roleName}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              {row.cycles.map((c) => (
-                <CycleCell key={c.year} cycle={c} />
-              ))}
-            </div>
-
-            <div
-              className={cn(
-                "font-mono text-[13px]",
-                row.saldo != null && row.saldo < 0
-                  ? "font-semibold text-destructive"
-                  : "text-muted-foreground",
-              )}
-            >
-              {row.saldo == null ? "—" : formatPLN(row.saldo)}
-            </div>
-
-            {/* składka (próg) opłacana w bieżącym okresie */}
-            <div className="min-w-0">
-              <TierSelect
-                memberId={row.memberId}
-                tierId={row.tierId}
-                tiers={tiers}
-                canManage={canManage}
-              />
-            </div>
-
-            <div className="flex justify-end">
-              {canManage ? (
-                <SettleFeeDialog
-                  memberId={row.memberId}
-                  memberName={row.name}
-                  year={year}
-                  foundedYear={foundedYear}
-                  paidYears={row.paidYears}
-                  tiers={tiers}
-                  currentTierId={row.tierId}
-                />
-              ) : (
-                <span className="text-sm text-muted-foreground">—</span>
-              )}
-            </div>
-          </div>
+            row={row}
+            year={year}
+            foundedYear={foundedYear}
+            tiers={tiers}
+            canManage={canManage}
+          />
         ))}
 
         {visible.length === 0 ? (
