@@ -7,6 +7,9 @@ import { prisma } from "@/lib/prisma";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { getStripe, createFeeCheckoutSession } from "@/lib/stripe";
 import { summarizeFees } from "@/lib/fees";
+import { formatFeeDueDate } from "@/lib/payments";
+import { formatPLN } from "@/lib/money";
+import { sendFeeReminderEmail } from "@/lib/email";
 
 // Oznacza składkę członka za dany rok jako opłaconą (paid=true) lub cofa to
 // oznaczenie (paid=false). Wymaga MEMBERS WRITE — operacyjne zarządzanie składkami
@@ -170,4 +173,83 @@ export async function startOwnFeePayment(): Promise<{ error: string } | undefine
 
   // redirect() rzuca wyjątkiem — musi być poza blokiem try/catch.
   redirect(session.url);
+}
+
+export type FeeRemindersResult =
+  | { error: string }
+  | { sent: number; failed: number; total: number };
+
+// Wysyła zbiorowo przypomnienia e-mail do członków zalegających ze składką za
+// bieżący rok (ten sam zbiór co karta „Zaległości": przypisany próg + nieopłacony
+// bieżący okres). Wymaga MEMBERS WRITE — operacyjnie prowadzi to skarbnik/zarząd.
+// Wysyłka jest miękka: zliczamy sukcesy i porażki, nie przerywamy na pojedynczym
+// błędzie SMTP. Zwraca podsumowanie albo komunikat błędu.
+export async function sendFeeReminders(
+  organizationId: string,
+): Promise<FeeRemindersResult> {
+  await requireMember(organizationId, "MEMBERS", "WRITE");
+
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: {
+      name: true,
+      membershipPaid: true,
+      feeDueMonth: true,
+      feeDueDay: true,
+      foundedYear: true,
+    },
+  });
+  if (!org) return { error: "Stowarzyszenie nie istnieje." };
+  if (!org.membershipPaid) {
+    return { error: "Członkostwo jest bezpłatne — nie naliczamy składek." };
+  }
+
+  const members = await prisma.member.findMany({
+    where: { organizationId },
+    select: {
+      email: true,
+      firstName: true,
+      joinedAt: true,
+      paymentTier: { select: { amount: true } },
+      membershipFees: { select: { year: true, amount: true } },
+    },
+  });
+
+  const summary = summarizeFees(members, {
+    feeDueMonth: org.feeDueMonth,
+    feeDueDay: org.feeDueDay,
+    foundedYear: org.foundedYear,
+    now: new Date(),
+  });
+
+  // Dłużnicy bieżącego roku: saldo ujemne (ma przypisaną składkę i jej nie opłacił).
+  const debtors = summary.results.filter(
+    (r) => r.saldo != null && r.saldo < 0 && r.feeAmount != null,
+  );
+  if (debtors.length === 0) return { sent: 0, failed: 0, total: 0 };
+
+  const dueText = formatFeeDueDate(org.feeDueMonth, org.feeDueDay);
+  const h = await headers();
+  const host = h.get("host");
+  const profileUrl = host
+    ? `${h.get("x-forwarded-proto") ?? "http"}://${host}/profile`
+    : null;
+
+  let sent = 0;
+  let failed = 0;
+  for (const r of debtors) {
+    const ok = await sendFeeReminderEmail({
+      to: r.member.email,
+      firstName: r.member.firstName,
+      organizationName: org.name,
+      year: summary.year,
+      amountText: formatPLN(r.feeAmount!),
+      dueText,
+      profileUrl,
+    });
+    if (ok) sent++;
+    else failed++;
+  }
+
+  return { sent, failed, total: debtors.length };
 }

@@ -43,6 +43,57 @@ export async function sendWelcomeEmail(params: {
   }
 }
 
+// Wysyła przypomnienie o nieopłaconej składce członkowskiej (wysyłka zbiorowa
+// z poziomu rejestru składek). Miękki błąd — wywołujący zlicza sukcesy/porażki.
+export async function sendFeeReminderEmail(params: {
+  to: string;
+  firstName: string;
+  organizationName: string;
+  year: number;
+  amountText: string; // sformatowana kwota, np. "100,00 zł"
+  dueText?: string | null; // termin roczny, np. "31 stycznia"
+  profileUrl?: string | null; // link do profilu, gdzie można opłacić online
+}): Promise<boolean> {
+  const transport = getTransport();
+  if (!transport) {
+    console.warn(
+      "[email] EMAIL_SERVER nie ustawiony — pomijam przypomnienie o składce do",
+      params.to,
+    );
+    return false;
+  }
+
+  const dueLine = params.dueText
+    ? ` Termin opłacenia składki upływa ${params.dueText}.`
+    : "";
+
+  try {
+    await transport.sendMail({
+      from: FROM,
+      to: params.to,
+      subject: `Przypomnienie o składce za ${params.year} — ${params.organizationName}`,
+      text:
+        `Cześć ${params.firstName},\n\n` +
+        `Przypominamy o nieopłaconej składce członkowskiej w „${params.organizationName}" za rok ${params.year} ` +
+        `w wysokości ${params.amountText}.${dueLine}\n` +
+        (params.profileUrl
+          ? `\nSkładkę możesz opłacić w swoim profilu:\n${params.profileUrl}\n`
+          : ""),
+      html:
+        `<p>Cześć ${params.firstName},</p>` +
+        `<p>Przypominamy o nieopłaconej składce członkowskiej w „<strong>${params.organizationName}</strong>" ` +
+        `za rok <strong>${params.year}</strong> w wysokości <strong>${params.amountText}</strong>.${dueLine}</p>` +
+        (params.profileUrl
+          ? `<p>Składkę możesz opłacić w swoim <a href="${params.profileUrl}">profilu</a>.</p>`
+          : ""),
+    });
+    return true;
+  } catch (error) {
+    console.error("[email] Nie udało się wysłać przypomnienia o składce:", error);
+    return false;
+  }
+}
+
 // Wysyła link do dokończenia płatności składki (na wypadek nieudanej płatności).
 export async function sendPaymentLinkEmail(params: {
   to: string;

@@ -3,8 +3,8 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, Search } from "lucide-react";
-import { setFeePaid, setMemberTier } from "@/lib/actions/fees";
+import { Bell, Check, Search } from "lucide-react";
+import { setFeePaid, setMemberTier, sendFeeReminders } from "@/lib/actions/fees";
 import { formatPLN } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import {
@@ -68,6 +68,16 @@ function debtorsLabel(n: number): string {
   return `${n} osób zalega`;
 }
 
+// Polska odmiana rzeczownika „przypomnienie": 1 → „przypomnienie",
+// 2–4 → „przypomnienia", pozostałe → „przypomnień".
+function remindersNoun(n: number): string {
+  const ones = n % 10;
+  const tens = n % 100;
+  if (n === 1) return "przypomnienie";
+  if (ones >= 2 && ones <= 4 && !(tens >= 12 && tens <= 14)) return "przypomnienia";
+  return "przypomnień";
+}
+
 function StatCard({
   label,
   value,
@@ -111,6 +121,95 @@ function StatCard({
         >
           {hint}
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+// Karta „Przypomnienia" (granatowa) — podsumowanie zaległości + zbiorcza wysyłka
+// przypomnień e-mail do dłużników bieżącego roku. Sama wysyłka wymaga MEMBERS WRITE
+// (canManage); osoby z samym odczytem widzą jedynie podsumowanie.
+function RemindersCard({
+  organizationId,
+  year,
+  debtorCount,
+  canManage,
+}: {
+  organizationId: string;
+  year: number;
+  debtorCount: number;
+  canManage: boolean;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [sending, startSend] = useTransition();
+
+  function send() {
+    startSend(async () => {
+      const result = await sendFeeReminders(organizationId);
+      if ("error" in result) {
+        toast.error(result.error);
+        return;
+      }
+      if (result.total === 0) {
+        toast.info("Brak zaległości — nie wysłano przypomnień.");
+      } else if (result.failed === 0) {
+        toast.success(
+          `Wysłano ${result.sent} ${remindersNoun(result.sent)}.`,
+        );
+      } else {
+        toast.warning(
+          `Wysłano ${result.sent} z ${result.total} — ${result.failed} nie powiodło się.`,
+        );
+      }
+      setOpen(false);
+      router.refresh();
+    });
+  }
+
+  const hasDebtors = debtorCount > 0;
+
+  return (
+    <div className="flex flex-col rounded-xl bg-brand p-[18px] text-brand-foreground">
+      <div className="text-[11.5px] font-bold tracking-wide text-[#8ea3c9] uppercase">
+        Przypomnienia
+      </div>
+      <p className="mt-2 mb-3.5 flex-1 text-[13.5px] leading-snug text-[#cdd5e6]">
+        {hasDebtors
+          ? `${debtorsLabel(debtorCount)} ze składką za ${year}.`
+          : `Brak zaległości — wszyscy opłacili składkę za ${year}.`}
+      </p>
+      {hasDebtors && canManage ? (
+        <Dialog open={open} onOpenChange={setOpen}>
+          <DialogTrigger asChild>
+            <button
+              type="button"
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-3 py-2.5 text-[13px] font-bold text-primary-foreground transition-colors hover:bg-primary/85"
+            >
+              <Bell className="size-3.5" />
+              Wyślij {debtorCount} {remindersNoun(debtorCount)}
+            </button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Wyślij przypomnienia o składce</DialogTitle>
+              <DialogDescription>
+                Do {debtorCount} {debtorCount === 1 ? "osoby" : "osób"} zalegających
+                ze składką za {year} zostanie wysłany e-mail z przypomnieniem.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
+                Anuluj
+              </Button>
+              <Button type="button" onClick={send} disabled={sending}>
+                {sending
+                  ? "Wysyłam…"
+                  : `Wyślij ${debtorCount} ${remindersNoun(debtorCount)}`}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       ) : null}
     </div>
   );
@@ -367,6 +466,7 @@ function SettleFeeDialog({
 }
 
 export function FeesManager({
+  organizationId,
   year,
   foundedYear,
   rows,
@@ -377,6 +477,7 @@ export function FeesManager({
   arrears,
   debtorCount,
 }: {
+  organizationId: string;
   year: number;
   foundedYear: number | null;
   rows: FeeRow[];
@@ -416,7 +517,7 @@ export function FeesManager({
   return (
     <div className="space-y-6">
       {/* karty statystyk */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label={`Zebrano ${year}`}
           value={formatPLN(collected)}
@@ -428,6 +529,12 @@ export function FeesManager({
           value={formatPLN(arrears)}
           hint={debtorCount > 0 ? debtorsLabel(debtorCount) : "brak zaległości"}
           accent={arrears > 0}
+        />
+        <RemindersCard
+          organizationId={organizationId}
+          year={year}
+          debtorCount={debtorCount}
+          canManage={canManage}
         />
       </div>
 
@@ -465,7 +572,7 @@ export function FeesManager({
           <span>Członek</span>
           <span className="text-center">Okres składkowy</span>
           <span className="text-center">Saldo</span>
-          <span>Składka</span>
+          <span className="text-center">Składka</span>
           <span className="text-center">Akcja</span>
         </div>
 

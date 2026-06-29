@@ -99,6 +99,7 @@ export default async function PaymentsPage() {
 
       {org?.membershipPaid ? (
         <FeesManager
+          organizationId={orgId}
           year={year}
           foundedYear={org?.foundedYear ?? null}
           rows={rows}
