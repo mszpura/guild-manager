@@ -27,7 +27,7 @@ export default async function JoinPage({
       formAddress: true,
       applicationFields: {
         orderBy: { order: "asc" },
-        select: { id: true, label: true, required: true },
+        select: { id: true, label: true, required: true, linkType: true },
       },
       paymentTiers: {
         orderBy: { order: "asc" },

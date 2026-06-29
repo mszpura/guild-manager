@@ -204,6 +204,15 @@ export const applicationFieldSchema = z.object({
   required: z.boolean(),
 });
 
+// Walidacja definicji pola-linku (panel ustawień). Etykieta wynika z typu, więc
+// wybieramy tylko typ + obowiązkowość.
+export const applicationLinkSchema = z.object({
+  linkType: z.enum(["FACEBOOK", "LINKEDIN", "EGD"], {
+    message: "Wybierz typ linku.",
+  }),
+  required: z.boolean(),
+});
+
 // Walidacja etykiety progu składki (kwotę parsuje parsePLN w akcji).
 export const paymentTierLabelSchema = z
   .string()

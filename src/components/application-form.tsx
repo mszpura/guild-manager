@@ -7,11 +7,17 @@ import {
   type ApplicationFormState,
 } from "@/lib/actions/applications";
 import { formatPLN } from "@/lib/money";
+import { LINK_CONFIG, linkUrlPreview, type LinkType } from "@/lib/links";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
 
-type CustomField = { id: string; label: string; required: boolean };
+type CustomField = {
+  id: string;
+  label: string;
+  required: boolean;
+  linkType: LinkType | null;
+};
 type Tier = { id: string; label: string; amount: number };
 type FieldMode = "HIDDEN" | "OPTIONAL" | "REQUIRED";
 type FieldModes = { birthDate: FieldMode; phone: FieldMode; address: FieldMode };
@@ -122,7 +128,14 @@ export function ApplicationForm({
             id={`custom_${f.id}`}
             name={`custom_${f.id}`}
             required={f.required}
+            placeholder={f.linkType ? LINK_CONFIG[f.linkType].placeholder : undefined}
           />
+          {f.linkType ? (
+            <span className="text-xs text-muted-foreground">
+              Podaj sam identyfikator lub wklej cały link — zapiszemy adres w
+              formacie {linkUrlPreview(f.linkType)}
+            </span>
+          ) : null}
         </Field>
       ))}
 

@@ -2,6 +2,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { summarizeFees, type FeeCycleStatus } from "@/lib/fees";
 import { formatFeeDueDate } from "@/lib/payments";
 import { formatPLN } from "@/lib/money";
+import { parseCustomData } from "@/lib/links";
 
 // Wspólny select członka dla widoku profilu — używany przez „Mój profil" (własny)
 // oraz szczegóły członka w panelu (/members/[id]), by oba widoki były spójne.
@@ -35,18 +36,6 @@ const dateFmt = new Intl.DateTimeFormat("pl-PL", {
   month: "2-digit",
   year: "numeric",
 });
-
-// customData to migawka [{ label, value }] przeniesiona ze zgłoszenia przy zatwierdzeniu.
-function parseCustomData(
-  data: Prisma.JsonValue | null,
-): { label: string; value: string }[] {
-  if (!Array.isArray(data)) return [];
-  return data.flatMap((item) =>
-    item && typeof item === "object" && "label" in item && "value" in item
-      ? [{ label: String(item.label), value: String(item.value) }]
-      : [],
-  );
-}
 
 function initials(firstName: string, lastName: string | null): string {
   const a = firstName.trim()[0] ?? "";
@@ -222,24 +211,44 @@ export function MemberProfile({
               </p>
             ) : (
               <div className="flex flex-col gap-0.5 p-3">
-                {customFields.map((f, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 rounded-lg px-2.5 py-2.5"
-                  >
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent font-heading text-sm font-extrabold text-accent-foreground">
-                      {f.label.trim().charAt(0).toUpperCase() || "•"}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-xs text-muted-foreground">
-                        {f.label}
+                {customFields.map((f, i) => {
+                  const inner = (
+                    <>
+                      <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent font-heading text-sm font-extrabold text-accent-foreground">
+                        {f.label.trim().charAt(0).toUpperCase() || "•"}
                       </span>
-                      <span className="block truncate text-sm font-semibold text-secondary-foreground">
-                        {f.value}
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-xs text-muted-foreground">
+                          {f.label}
+                        </span>
+                        <span className="block truncate text-sm font-semibold text-secondary-foreground">
+                          {f.value}
+                        </span>
                       </span>
-                    </span>
-                  </div>
-                ))}
+                      {f.url ? (
+                        <span className="shrink-0 text-muted-foreground">↗</span>
+                      ) : null}
+                    </>
+                  );
+                  return f.url ? (
+                    <a
+                      key={i}
+                      href={f.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-3 rounded-lg px-2.5 py-2.5 transition-colors hover:bg-muted"
+                    >
+                      {inner}
+                    </a>
+                  ) : (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 rounded-lg px-2.5 py-2.5"
+                    >
+                      {inner}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

@@ -34,7 +34,7 @@ export default async function SettingsPage() {
     prisma.applicationField.findMany({
       where: { organizationId: orgId },
       orderBy: { order: "asc" },
-      select: { id: true, label: true, required: true },
+      select: { id: true, label: true, required: true, linkType: true },
     }),
     prisma.organization.findUnique({
       where: { id: orgId },
@@ -133,8 +133,9 @@ export default async function SettingsPage() {
             <CardHeader>
               <CardTitle>Formularz zgłoszeniowy</CardTitle>
               <CardDescription>
-                Pola stałe są zawsze obecne. Możesz dodać własne pola tekstowe,
-                które pojawią się na publicznym formularzu zgłoszeniowym.
+                Pola stałe są zawsze obecne. Możesz dodać własne pola tekstowe
+                oraz linki (Facebook, LinkedIn, EGD), które pojawią się na
+                publicznym formularzu zgłoszeniowym.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">

@@ -7,6 +7,7 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { requireMember } from "@/lib/tenant";
 import { buildApplicationSchema } from "@/lib/validations";
+import { extractLinkId, buildLinkUrl } from "@/lib/links";
 import { sendWelcomeEmail, sendPaymentLinkEmail } from "@/lib/email";
 import { getStripe, createCheckoutSession } from "@/lib/stripe";
 import { formatPLN } from "@/lib/money";
@@ -36,7 +37,7 @@ export async function submitApplication(
       formAddress: true,
       applicationFields: {
         orderBy: { order: "asc" },
-        select: { id: true, label: true, required: true },
+        select: { id: true, label: true, required: true, linkType: true },
       },
       paymentTiers: {
         orderBy: { order: "asc" },
@@ -67,13 +68,30 @@ export async function submitApplication(
   }
 
   // Walidacja i migawka pól własnych. Dane publiczne → walidujemy po stronie serwera.
-  const customData: { label: string; value: string }[] = [];
+  // Pola-linki: z wpisu użytkownika wyłuskujemy sam identyfikator i dokładamy gotowy
+  // adres (snapshot { label, value: id, linkType, url }).
+  const customData: Record<string, string>[] = [];
   for (const field of org.applicationFields) {
-    const value = String(formData.get(`custom_${field.id}`) ?? "").trim();
-    if (field.required && !value) {
-      return { error: `Pole „${field.label}" jest wymagane.` };
+    const raw = String(formData.get(`custom_${field.id}`) ?? "").trim();
+    if (field.linkType) {
+      const id = extractLinkId(field.linkType, raw);
+      if (field.required && !id) {
+        return { error: `Pole „${field.label}" jest wymagane.` };
+      }
+      if (id) {
+        customData.push({
+          label: field.label,
+          value: id,
+          linkType: field.linkType,
+          url: buildLinkUrl(field.linkType, id),
+        });
+      }
+    } else {
+      if (field.required && !raw) {
+        return { error: `Pole „${field.label}" jest wymagane.` };
+      }
+      if (raw) customData.push({ label: field.label, value: raw });
     }
-    if (value) customData.push({ label: field.label, value });
   }
 
   // Pola standardowe wg konfiguracji: ukryte → undefined, opcjonalne puste → null.

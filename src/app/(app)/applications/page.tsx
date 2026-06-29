@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@/generated/prisma/client";
 import { ApplicationStatus, PaymentStatus } from "@/generated/prisma/client";
 import { formatPLN } from "@/lib/money";
+import { parseCustomData, type CustomDatum } from "@/lib/links";
 import { ApplicationActions } from "@/components/application-actions";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -16,21 +16,6 @@ import {
 } from "@/components/ui/table";
 
 const dateFmt = new Intl.DateTimeFormat("pl-PL", { dateStyle: "medium" });
-
-// customData to migawka [{ label, value }] zapisana w chwili zgłoszenia.
-function parseCustomData(
-  data: Prisma.JsonValue | null,
-): { label: string; value: string }[] {
-  if (!Array.isArray(data)) return [];
-  return data.flatMap((item) =>
-    item &&
-    typeof item === "object" &&
-    "label" in item &&
-    "value" in item
-      ? [{ label: String(item.label), value: String(item.value) }]
-      : [],
-  );
-}
 
 const STATUS: Record<
   ApplicationStatus,
@@ -103,7 +88,7 @@ export default async function ApplicationsPage() {
                 <TableCell>
                   {(() => {
                     // Pola standardowe (telefon/adres) + migawka pól własnych razem.
-                    const extra = [
+                    const extra: CustomDatum[] = [
                       ...(a.phone ? [{ label: "Telefon", value: a.phone }] : []),
                       ...(a.address
                         ? [{ label: "Adres", value: a.address }]
@@ -119,7 +104,18 @@ export default async function ApplicationsPage() {
                             <span className="text-muted-foreground">
                               {e.label}:
                             </span>{" "}
-                            {e.value}
+                            {e.url ? (
+                              <a
+                                href={e.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="font-medium text-primary hover:underline"
+                              >
+                                {e.value} ↗
+                              </a>
+                            ) : (
+                              e.value
+                            )}
                           </li>
                         ))}
                       </ul>

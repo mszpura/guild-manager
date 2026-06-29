@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireMember } from "@/lib/tenant";
-import { applicationFieldSchema } from "@/lib/validations";
+import { applicationFieldSchema, applicationLinkSchema } from "@/lib/validations";
 import { FormFieldMode } from "@/generated/prisma/client";
+import { LINK_CONFIG } from "@/lib/links";
 
 export type FieldFormState = { error?: string; ok?: boolean } | undefined;
 
@@ -63,6 +64,53 @@ export async function addApplicationField(
       organizationId,
       label: parsed.data.label,
       required: parsed.data.required,
+      order: (last?.order ?? 0) + 1,
+    },
+  });
+
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
+// Dodaje pole-link do formularza zgłoszeniowego. Etykieta wynika z typu linku.
+// SETTINGS WRITE. Jeden link danego typu na stowarzyszenie (etykiety są stałe).
+export async function addApplicationLink(
+  organizationId: string,
+  _prev: FieldFormState,
+  formData: FormData,
+): Promise<FieldFormState> {
+  await requireMember(organizationId, "SETTINGS", "WRITE");
+
+  const parsed = applicationLinkSchema.safeParse({
+    linkType: formData.get("linkType"),
+    required: formData.get("required") === "on",
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Nieprawidłowe dane." };
+  }
+
+  const { linkType, required } = parsed.data;
+
+  const existing = await prisma.applicationField.findFirst({
+    where: { organizationId, linkType },
+    select: { id: true },
+  });
+  if (existing) {
+    return { error: `Link „${LINK_CONFIG[linkType].label}" jest już dodany.` };
+  }
+
+  const last = await prisma.applicationField.findFirst({
+    where: { organizationId },
+    orderBy: { order: "desc" },
+    select: { order: true },
+  });
+
+  await prisma.applicationField.create({
+    data: {
+      organizationId,
+      label: LINK_CONFIG[linkType].label,
+      linkType,
+      required,
       order: (last?.order ?? 0) + 1,
     },
   });
