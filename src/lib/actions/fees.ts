@@ -14,20 +14,13 @@ import { sendFeeReminderEmail } from "@/lib/email";
 // Oznacza składkę członka za dany rok jako opłaconą (paid=true) lub cofa to
 // oznaczenie (paid=false). Wymaga MEMBERS WRITE — operacyjne zarządzanie składkami
 // prowadzi skarbnik/zarząd. Organizacja ustalana z wpisu członka (tenant-scoped).
-// Przy oznaczaniu zapisujemy migawkę kwoty wybranego progu (tierId) — w starszych
-// okresach członek mógł mieć inną składkę niż obecnie przypisaną. Bez tierId bierzemy
-// aktualnie przypisany próg.
-export async function setFeePaid(
-  memberId: string,
-  year: number,
-  paid: boolean,
-  tierId?: string,
-) {
+// Migawka kwoty = roczna składka roli członka (Role.feeAmount) z chwili rozliczenia.
+export async function setFeePaid(memberId: string, year: number, paid: boolean) {
   const member = await prisma.member.findUnique({
     where: { id: memberId },
     select: {
       organizationId: true,
-      paymentTier: { select: { amount: true } },
+      role: { select: { feeAmount: true } },
     },
   });
   if (!member) throw new Error("Członek nie istnieje.");
@@ -37,17 +30,7 @@ export async function setFeePaid(
   if (!Number.isInteger(year)) throw new Error("Nieprawidłowy rok.");
 
   if (paid) {
-    let amount = member.paymentTier?.amount ?? null;
-    if (tierId) {
-      const tier = await prisma.paymentTier.findUnique({
-        where: { id: tierId },
-        select: { organizationId: true, amount: true },
-      });
-      if (!tier || tier.organizationId !== member.organizationId) {
-        throw new Error("Nieprawidłowa składka.");
-      }
-      amount = tier.amount;
-    }
+    const amount = member.role.feeAmount;
     await prisma.membershipFee.upsert({
       where: { memberId_year: { memberId, year } },
       create: { organizationId: member.organizationId, memberId, year, amount },
@@ -61,40 +44,9 @@ export async function setFeePaid(
   revalidatePath("/dashboard");
 }
 
-// Przypisuje członkowi próg składki (lub czyści przypisanie, gdy tierId puste).
-// Wymaga MEMBERS WRITE. Próg musi należeć do tego samego stowarzyszenia.
-export async function setMemberTier(memberId: string, tierId: string) {
-  const member = await prisma.member.findUnique({
-    where: { id: memberId },
-    select: { organizationId: true },
-  });
-  if (!member) throw new Error("Członek nie istnieje.");
-
-  await requireMember(member.organizationId, "MEMBERS", "WRITE");
-
-  let nextTierId: string | null = null;
-  if (tierId) {
-    const tier = await prisma.paymentTier.findUnique({
-      where: { id: tierId },
-      select: { organizationId: true },
-    });
-    if (!tier || tier.organizationId !== member.organizationId) {
-      throw new Error("Nieprawidłowa składka.");
-    }
-    nextTierId = tierId;
-  }
-
-  await prisma.member.update({
-    where: { id: memberId },
-    data: { paymentTierId: nextTierId },
-  });
-  revalidatePath("/payments");
-  revalidatePath("/dashboard");
-}
-
 // Rozpoczyna samodzielne opłacenie bieżącej (zaległej/oczekującej) składki przez
-// zalogowanego członka z poziomu „Mój profil". Liczy należny rok i kwotę z aktualnie
-// przypisanego progu, tworzy sesję Stripe Checkout i przekierowuje do płatności.
+// zalogowanego członka z poziomu „Mój profil". Liczy należny rok i kwotę ze składki
+// roli członka, tworzy sesję Stripe Checkout i przekierowuje do płatności.
 // Faktyczne odnotowanie wpłaty robi webhook (bez udziału skarbnika). Zwraca komunikat
 // błędu, gdy płatności nie da się rozpocząć; w razie powodzenia przerywa redirectem.
 export async function startOwnFeePayment(): Promise<{ error: string } | undefined> {
@@ -120,8 +72,7 @@ export async function startOwnFeePayment(): Promise<{ error: string } | undefine
       select: {
         email: true,
         joinedAt: true,
-        role: { select: { feeExempt: true } },
-        paymentTier: { select: { label: true, amount: true } },
+        role: { select: { name: true, feeAmount: true } },
         membershipFees: { select: { year: true, amount: true } },
       },
     }),
@@ -129,7 +80,7 @@ export async function startOwnFeePayment(): Promise<{ error: string } | undefine
 
   if (!org || !member) return { error: "Nie znaleziono danych członka." };
   if (!org.membershipPaid) return { error: "Członkostwo jest obecnie bezpłatne." };
-  if (member.role.feeExempt) {
+  if (member.role.feeAmount == null) {
     return { error: "Twoja rola jest zwolniona ze składek." };
   }
   if (!getStripe()) {
@@ -137,19 +88,17 @@ export async function startOwnFeePayment(): Promise<{ error: string } | undefine
       error: "Płatności nie są obecnie skonfigurowane. Skontaktuj się ze skarbnikiem.",
     };
   }
-  if (!member.paymentTier) {
-    return {
-      error: "Składka nie została przypisana — skontaktuj się ze skarbnikiem.",
-    };
-  }
 
   // Należny rok = bieżący okres składkowy; pozwalamy płacić tylko gdy nieopłacony.
-  const summary = summarizeFees([member], {
-    feeDueMonth: org.feeDueMonth,
-    feeDueDay: org.feeDueDay,
-    foundedYear: org.foundedYear,
-    now: new Date(),
-  });
+  const summary = summarizeFees(
+    [{ ...member, feeAmount: member.role.feeAmount }],
+    {
+      feeDueMonth: org.feeDueMonth,
+      feeDueDay: org.feeDueDay,
+      foundedYear: org.foundedYear,
+      now: new Date(),
+    },
+  );
   const result = summary.results[0];
   if (result.currentStatus === "PAID") {
     return { error: "Bieżąca składka jest już opłacona." };
@@ -161,8 +110,8 @@ export async function startOwnFeePayment(): Promise<{ error: string } | undefine
   const base = `${proto}://${host}`;
 
   const session = await createFeeCheckoutSession({
-    amount: member.paymentTier.amount,
-    label: member.paymentTier.label,
+    amount: member.role.feeAmount,
+    label: member.role.name,
     email: member.email,
     organizationId: orgId,
     memberId: me.id,
@@ -214,14 +163,13 @@ export async function sendFeeReminders(
       email: true,
       firstName: true,
       joinedAt: true,
-      role: { select: { feeExempt: true } },
-      paymentTier: { select: { amount: true } },
+      role: { select: { feeAmount: true } },
       membershipFees: { select: { year: true, amount: true } },
     },
   });
 
   const summary = summarizeFees(
-    members.map((m) => ({ ...m, feeExempt: m.role.feeExempt })),
+    members.map((m) => ({ ...m, feeAmount: m.role.feeAmount })),
     {
       feeDueMonth: org.feeDueMonth,
       feeDueDay: org.feeDueDay,
@@ -274,8 +222,7 @@ export async function sendFeeReminder(
       email: true,
       firstName: true,
       joinedAt: true,
-      role: { select: { feeExempt: true } },
-      paymentTier: { select: { amount: true } },
+      role: { select: { feeAmount: true } },
       membershipFees: { select: { year: true, amount: true } },
       organization: {
         select: {
@@ -296,16 +243,19 @@ export async function sendFeeReminder(
   if (!org.membershipPaid) {
     return { error: "Członkostwo jest bezpłatne — nie naliczamy składek." };
   }
-  if (member.role.feeExempt) {
+  if (member.role.feeAmount == null) {
     return { error: "Ten członek jest zwolniony ze składek." };
   }
 
-  const summary = summarizeFees([member], {
-    feeDueMonth: org.feeDueMonth,
-    feeDueDay: org.feeDueDay,
-    foundedYear: org.foundedYear,
-    now: new Date(),
-  });
+  const summary = summarizeFees(
+    [{ ...member, feeAmount: member.role.feeAmount }],
+    {
+      feeDueMonth: org.feeDueMonth,
+      feeDueDay: org.feeDueDay,
+      foundedYear: org.foundedYear,
+      now: new Date(),
+    },
+  );
   const result = summary.results[0];
   if (!(result.saldo != null && result.saldo < 0 && result.feeAmount != null)) {
     return { error: "Składka za bieżący rok jest już rozliczona." };

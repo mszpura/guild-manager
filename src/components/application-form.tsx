@@ -18,7 +18,6 @@ type CustomField = {
   required: boolean;
   linkType: LinkType | null;
 };
-type Tier = { id: string; label: string; amount: number };
 type FieldMode = "HIDDEN" | "OPTIONAL" | "REQUIRED";
 type FieldModes = { birthDate: FieldMode; phone: FieldMode; address: FieldMode };
 
@@ -28,14 +27,17 @@ export function ApplicationForm({
   customFields = [],
   fieldModes,
   paid = false,
-  tiers = [],
+  feeAmount = null,
+  feeLabel = null,
 }: {
   token: string;
   organizationName: string;
   customFields?: CustomField[];
   fieldModes: FieldModes;
   paid?: boolean;
-  tiers?: Tier[];
+  // Roczna składka roli domyślnej (grosze) i jej nazwa. null = rola zwolniona.
+  feeAmount?: number | null;
+  feeLabel?: string | null;
 }) {
   const action = submitApplication.bind(null, token);
   const [state, formAction, pending] = useActionState<
@@ -44,7 +46,7 @@ export function ApplicationForm({
   >(action, undefined);
   // Zgłaszający deklaruje opłatę offline (przelew / już opłacona) — pomijamy płatność online.
   const [skipPayment, setSkipPayment] = useState(false);
-  const hasPayment = paid && tiers.length > 0;
+  const hasPayment = paid && feeAmount != null;
 
   if (state?.ok) {
     return (
@@ -141,26 +143,17 @@ export function ApplicationForm({
 
       {hasPayment ? (
         <>
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">Próg składki *</legend>
-            {tiers.map((t, i) => (
-              <label
-                key={t.id}
-                className="flex items-center gap-3 rounded-md border px-3 py-2"
-              >
-                <input
-                  type="radio"
-                  name="paymentTier"
-                  value={t.id}
-                  required
-                  defaultChecked={i === 0}
-                  className="size-4"
-                />
-                <span className="flex-1">{t.label}</span>
-                <span className="font-medium">{formatPLN(t.amount)}</span>
-              </label>
-            ))}
-          </fieldset>
+          <div className="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5">
+            <span className="text-sm">
+              Składka członkowska
+              {feeLabel ? (
+                <span className="block text-xs text-muted-foreground">
+                  {feeLabel}
+                </span>
+              ) : null}
+            </span>
+            <span className="font-medium">{formatPLN(feeAmount)}</span>
+          </div>
 
           <label className="flex items-start gap-3 rounded-md border bg-muted/30 px-3 py-2.5">
             <input

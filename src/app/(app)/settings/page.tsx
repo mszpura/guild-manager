@@ -30,7 +30,7 @@ export default async function SettingsPage() {
   const orgId = data.active.organizationId;
   await requireMember(orgId, "SETTINGS", "WRITE");
 
-  const [fields, org, tiers, roles] = await Promise.all([
+  const [fields, org, roles] = await Promise.all([
     prisma.applicationField.findMany({
       where: { organizationId: orgId },
       orderBy: { order: "asc" },
@@ -59,11 +59,6 @@ export default async function SettingsPage() {
         formAddress: true,
       },
     }),
-    prisma.paymentTier.findMany({
-      where: { organizationId: orgId },
-      orderBy: { order: "asc" },
-      select: { id: true, label: true, amount: true },
-    }),
     prisma.role.findMany({
       where: { organizationId: orgId },
       orderBy: [{ isOwner: "desc" }, { isSystem: "desc" }, { createdAt: "asc" }],
@@ -73,7 +68,7 @@ export default async function SettingsPage() {
         permissions: true,
         isOwner: true,
         isSystem: true,
-        feeExempt: true,
+        feeAmount: true,
         canVote: true,
         _count: { select: { members: true } },
       },
@@ -187,15 +182,19 @@ export default async function SettingsPage() {
             <CardHeader>
               <CardTitle>Składki członkowskie</CardTitle>
               <CardDescription>
-                Określ, czy członkostwo jest płatne, i zdefiniuj progi składki,
-                spośród których wybierze osoba wypełniająca formularz.
+                Określ, czy członkostwo jest płatne, i ustal roczną składkę
+                osobno dla każdej roli (rola bez kwoty jest zwolniona ze składek).
               </CardDescription>
             </CardHeader>
             <CardContent>
               <PaymentSettings
                 organizationId={orgId}
                 membershipPaid={org?.membershipPaid ?? false}
-                tiers={tiers}
+                roles={roles.map((r) => ({
+                  id: r.id,
+                  name: r.name,
+                  feeAmount: r.feeAmount,
+                }))}
                 feeDueMonth={org?.feeDueMonth ?? null}
                 feeDueDay={org?.feeDueDay ?? null}
               />
@@ -212,7 +211,6 @@ export default async function SettingsPage() {
               permissions: r.permissions,
               isOwner: r.isOwner,
               isSystem: r.isSystem,
-              feeExempt: r.feeExempt,
               canVote: r.canVote,
               memberCount: r._count.members,
             }))}

@@ -9,12 +9,11 @@ export type FeeCycleStatus = "PAID" | "OVERDUE" | "PENDING" | "NA";
 export type CurrentFeeStatus = "PAID" | "OVERDUE" | "PENDING" | "EXEMPT";
 
 // Minimalny kształt członka potrzebny do wyliczeń (pasuje do select-ów Prisma).
+// Roczna składka wynika z roli członka: feeAmount (grosze) albo null = zwolniony.
 export type FeeMemberInput = {
   joinedAt: Date;
-  paymentTier: { amount: number } | null;
+  feeAmount: number | null;
   membershipFees: { year: number; amount: number | null }[];
-  // Rola zwolniona ze składek — taki członek nie jest naliczany ani liczony do zaległości.
-  feeExempt?: boolean;
 };
 
 export type MemberFeeResult<T> = {
@@ -54,8 +53,8 @@ export function summarizeFees<T extends FeeMemberInput>(
   const isOverdueYear = (y: number) => isFeeOverdue(feeDueMonth, feeDueDay, y, now);
 
   const results: MemberFeeResult<T>[] = members.map((m) => {
-    // Rola zwolniona ze składek — brak naliczeń i zaległości; okresy oznaczamy „NA".
-    if (m.feeExempt) {
+    // Rola zwolniona ze składek (brak kwoty na roli) — bez naliczeń i zaległości.
+    if (m.feeAmount == null) {
       const cycles = years.map((y) => ({ year: y, status: "NA" as FeeCycleStatus }));
       return { member: m, cycles, feeAmount: null, saldo: null, currentStatus: "EXEMPT" as const };
     }
@@ -65,7 +64,7 @@ export function summarizeFees<T extends FeeMemberInput>(
     // Najwcześniejszy okres, którego dotyczy składka: rok założenia (gdy znany),
     // inaczej rok wstąpienia członka.
     const startYear = foundedYear ?? joinYear;
-    const feeAmount = m.paymentTier?.amount ?? null;
+    const feeAmount = m.feeAmount;
 
     const cycles = years.map((y) => {
       let status: FeeCycleStatus;
@@ -88,16 +87,16 @@ export function summarizeFees<T extends FeeMemberInput>(
     return { member: m, cycles, feeAmount, saldo, currentStatus };
   });
 
-  // Statystyki liczymy wyłącznie dla członków zobowiązanych do składki (pomijamy zwolnionych).
-  const payingMembers = members.filter((m) => !m.feeExempt);
+  // Statystyki liczymy wyłącznie dla członków zobowiązanych do składki (z kwotą na roli).
+  const payingMembers = members.filter((m) => m.feeAmount != null);
   const collected = payingMembers.reduce((sum, m) => {
     const fee = m.membershipFees.find((f) => f.year === year);
-    return fee ? sum + (fee.amount ?? m.paymentTier?.amount ?? 0) : sum;
+    return fee ? sum + (fee.amount ?? m.feeAmount ?? 0) : sum;
   }, 0);
   const charged = payingMembers.reduce(
     (sum, m) =>
-      m.paymentTier != null && year >= m.joinedAt.getFullYear()
-        ? sum + m.paymentTier.amount
+      m.feeAmount != null && year >= m.joinedAt.getFullYear()
+        ? sum + m.feeAmount
         : sum,
     0,
   );

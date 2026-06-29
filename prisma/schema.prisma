@@ -119,7 +119,6 @@ model Organization {
   roles             Role[]
   applications      MembershipApplication[]
   applicationFields ApplicationField[]
-  paymentTiers      PaymentTier[]
   membershipFees    MembershipFee[]
   meetings          Meeting[]
   resolutions       Resolution[]
@@ -136,9 +135,10 @@ model Role {
   isOwner     Boolean  @default(false) // pełne uprawnienia, zablokowana do edycji/usuwania
   isSystem    Boolean  @default(false) // Prezes/Członek — nieusuwalne
   isDefault   Boolean  @default(false) // rola nadawana zatwierdzonym zgłoszeniom (Członek)
-  // Rola zwolniona z opłacania składek (np. Junior, Członek Honorowy) — członkowie z
-  // taką rolą nie są obciążani składką ani liczeni do zaległości/opłacalności.
-  feeExempt   Boolean  @default(false)
+  // Roczna składka członkowska tej roli w groszach. null = rola zwolniona ze składek
+  // (członkowie z taką rolą nie są obciążani składką ani liczeni do zaległości).
+  // Wysokość ustala administrator w ustawieniach składek (per rola).
+  feeAmount   Int?
   // Czy rola ma prawo głosu (głosowania nad uchwałami i punktami porządku obrad).
   canVote     Boolean  @default(true)
   createdAt   DateTime @default(now())
@@ -184,22 +184,6 @@ enum PaymentStatus {
   PAID // opłacone
 }
 
-// Próg składki członkowskiej (konfiguracja). Kwota w groszach.
-model PaymentTier {
-  id             String       @id @default(cuid())
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  organizationId String
-
-  label     String
-  amount    Int // grosze (np. 10000 = 100,00 zł)
-  order     Int      @default(0)
-  createdAt DateTime @default(now())
-
-  members Member[]
-
-  @@index([organizationId])
-}
-
 // Definicja dodatkowego pola formularza zgłoszeniowego (konfigurowane przez admina).
 model ApplicationField {
   id             String       @id @default(cuid())
@@ -236,9 +220,9 @@ model MembershipApplication {
   // Odpowiedzi z pól własnych — migawka [{ label, value }] z chwili zgłoszenia.
   customData Json?
 
-  // Płatność (migawka progu z chwili zgłoszenia + status ze Stripe).
+  // Płatność (migawka składki domyślnej roli z chwili zgłoszenia + status ze Stripe).
   paymentStatus    PaymentStatus @default(NOT_REQUIRED)
-  paymentTierLabel String?
+  paymentTierLabel String? // etykieta składki (nazwa roli docelowej)
   paymentAmount    Int? // grosze
   stripeSessionId  String?
   paymentUrl       String? // link do dokończenia płatności (Stripe Checkout)
@@ -274,10 +258,7 @@ model Member {
   customData Json?
   joinedAt  DateTime  @default(now())
 
-  // Przypisany próg składki (z konfiguracji stowarzyszenia). null = nieprzypisany.
-  // Roczna kwota składki członka = paymentTier.amount.
-  paymentTier   PaymentTier? @relation(fields: [paymentTierId], references: [id], onDelete: SetNull)
-  paymentTierId String?
+  // Roczna kwota składki członka wynika z jego roli (Role.feeAmount); null = zwolniony.
 
   attendances     MeetingAttendance[]
   agendaComments  AgendaComment[]

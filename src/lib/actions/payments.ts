@@ -3,17 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireMember } from "@/lib/tenant";
-import { paymentTierLabelSchema } from "@/lib/validations";
 import { parsePLN } from "@/lib/money";
 import { isValidFeeDueDate } from "@/lib/payments";
 
 export type TierFormState = { error?: string; ok?: boolean } | undefined;
 
-// Domyślna składka zakładana przy włączeniu płatnego członkostwa.
-const DEFAULT_TIER = { label: "Składka podstawowa", amount: 10000 }; // 100,00 zł
-
-// Włącza/wyłącza płatne członkostwo. OWNER/BOARD. Po włączeniu w systemie musi istnieć
-// co najmniej jedna składka — jeśli żadnej nie ma, zakładamy domyślną „Składka podstawowa".
+// Włącza/wyłącza płatne członkostwo. OWNER/BOARD. Wysokość składek ustala się per rola
+// w ustawieniach składek (domyślnie każda rola jest zwolniona — Role.feeAmount = null).
 export async function setMembershipPaid(
   organizationId: string,
   paid: boolean,
@@ -24,17 +20,40 @@ export async function setMembershipPaid(
     data: { membershipPaid: paid },
   });
 
-  if (paid) {
-    const count = await prisma.paymentTier.count({ where: { organizationId } });
-    if (count === 0) {
-      await prisma.paymentTier.create({
-        data: { organizationId, ...DEFAULT_TIER, order: 1 },
-      });
+  revalidatePath("/settings");
+  revalidatePath("/payments");
+}
+
+// Ustawia roczną składkę dla roli (w złotówkach) albo zwalnia rolę ze składek
+// (pusta wartość → feeAmount = null). OWNER/BOARD. Rola musi należeć do organizacji.
+export async function setRoleFee(
+  roleId: string,
+  amountText: string,
+): Promise<{ error: string } | { ok: true }> {
+  const role = await prisma.role.findUnique({
+    where: { id: roleId },
+    select: { organizationId: true },
+  });
+  if (!role) return { error: "Rola nie istnieje." };
+
+  await requireMember(role.organizationId, "SETTINGS", "WRITE");
+
+  const trimmed = amountText.trim();
+  let feeAmount: number | null = null;
+  if (trimmed !== "") {
+    const amount = parsePLN(trimmed);
+    if (amount === null) {
+      return { error: "Podaj poprawną kwotę (np. 100 lub 100,50)." };
     }
+    feeAmount = amount;
   }
+
+  await prisma.role.update({ where: { id: roleId }, data: { feeAmount } });
 
   revalidatePath("/settings");
   revalidatePath("/payments");
+  revalidatePath("/dashboard");
+  return { ok: true };
 }
 
 // Ustawia (lub czyści) roczny termin opłacenia składki. OWNER/BOARD.
@@ -70,65 +89,4 @@ export async function setFeeDueDate(
   });
   revalidatePath("/settings");
   return { ok: true };
-}
-
-// Dodaje próg składki. OWNER/BOARD.
-export async function addPaymentTier(
-  organizationId: string,
-  _prev: TierFormState,
-  formData: FormData,
-): Promise<TierFormState> {
-  await requireMember(organizationId, "SETTINGS", "WRITE");
-
-  const labelResult = paymentTierLabelSchema.safeParse(formData.get("label"));
-  if (!labelResult.success) {
-    return { error: labelResult.error.issues[0]?.message ?? "Nieprawidłowa nazwa." };
-  }
-
-  const amount = parsePLN(String(formData.get("amount") ?? ""));
-  if (amount === null) {
-    return { error: "Podaj poprawną kwotę (np. 100 lub 100,50)." };
-  }
-
-  const last = await prisma.paymentTier.findFirst({
-    where: { organizationId },
-    orderBy: { order: "desc" },
-    select: { order: true },
-  });
-
-  await prisma.paymentTier.create({
-    data: {
-      organizationId,
-      label: labelResult.data,
-      amount,
-      order: (last?.order ?? 0) + 1,
-    },
-  });
-
-  revalidatePath("/settings");
-  revalidatePath("/payments");
-  return { ok: true };
-}
-
-// Usuwa próg składki. OWNER/BOARD (organizacja ustalana z progu). W systemie musi
-// pozostać co najmniej jedna składka — ostatniej nie można usunąć.
-export async function deletePaymentTier(tierId: string) {
-  const tier = await prisma.paymentTier.findUnique({
-    where: { id: tierId },
-    select: { organizationId: true },
-  });
-  if (!tier) throw new Error("Próg nie istnieje.");
-
-  await requireMember(tier.organizationId, "SETTINGS", "WRITE");
-
-  const count = await prisma.paymentTier.count({
-    where: { organizationId: tier.organizationId },
-  });
-  if (count <= 1) {
-    throw new Error("Musi pozostać co najmniej jedna składka.");
-  }
-
-  await prisma.paymentTier.delete({ where: { id: tierId } });
-  revalidatePath("/settings");
-  revalidatePath("/payments");
 }

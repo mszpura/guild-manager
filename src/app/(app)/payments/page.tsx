@@ -30,36 +30,27 @@ export default async function PaymentsPage() {
   });
   const dueLabel = formatFeeDueDate(org?.feeDueMonth, org?.feeDueDay);
 
-  const [members, tiers] = await Promise.all([
-    prisma.member.findMany({
-      where: { organizationId: orgId },
-      orderBy: [
-        { role: { isOwner: "desc" } },
-        { lastName: "asc" },
-        { firstName: "asc" },
-      ],
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        joinedAt: true,
-        paymentTierId: true,
-        paymentTier: { select: { amount: true } },
-        role: { select: { name: true, feeExempt: true } },
-        // Wszystkie wpłaty członka — potrzebne do salda (zaległości za poprzednie lata).
-        membershipFees: { select: { year: true, amount: true } },
-      },
-    }),
-    // Lista składek (progów) z ustawień — do wyboru per członek.
-    prisma.paymentTier.findMany({
-      where: { organizationId: orgId },
-      orderBy: { order: "asc" },
-      select: { id: true, label: true, amount: true },
-    }),
-  ]);
+  const members = await prisma.member.findMany({
+    where: { organizationId: orgId },
+    orderBy: [
+      { role: { isOwner: "desc" } },
+      { lastName: "asc" },
+      { firstName: "asc" },
+    ],
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      joinedAt: true,
+      // Roczna składka i nazwa wynikają z roli członka.
+      role: { select: { name: true, feeAmount: true } },
+      // Wszystkie wpłaty członka — potrzebne do salda (zaległości za poprzednie lata).
+      membershipFees: { select: { year: true, amount: true } },
+    },
+  });
 
   const summary = summarizeFees(
-    members.map((m) => ({ ...m, feeExempt: m.role.feeExempt })),
+    members.map((m) => ({ ...m, feeAmount: m.role.feeAmount })),
     {
       feeDueMonth: org?.feeDueMonth,
       feeDueDay: org?.feeDueDay,
@@ -74,7 +65,7 @@ export default async function PaymentsPage() {
     name: [m.firstName, m.lastName].filter(Boolean).join(" "),
     initials: initials(m.firstName, m.lastName),
     roleName: m.role.name,
-    tierId: m.paymentTierId,
+    rate: m.role.feeAmount,
     saldo,
     status: currentStatus,
     // Wszystkie opłacone lata — do listy okresów w oknie rozliczenia (także starsze
@@ -106,7 +97,6 @@ export default async function PaymentsPage() {
           year={year}
           foundedYear={org?.foundedYear ?? null}
           rows={rows}
-          tiers={tiers}
           canManage={canManage}
           collected={collected}
           charged={charged}

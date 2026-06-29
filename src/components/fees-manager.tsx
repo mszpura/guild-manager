@@ -4,12 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Bell, Search } from "lucide-react";
-import {
-  setFeePaid,
-  setMemberTier,
-  sendFeeReminders,
-  sendFeeReminder,
-} from "@/lib/actions/fees";
+import { setFeePaid, sendFeeReminders, sendFeeReminder } from "@/lib/actions/fees";
 import { formatPLN } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,15 +31,13 @@ export type FeeCycle = {
   status: CycleStatus;
 };
 
-export type FeeTier = { id: string; label: string; amount: number };
-
 export type FeeRow = {
   memberId: string;
   name: string;
   initials: string;
   roleName: string;
-  tierId: string | null; // przypisany próg składki, null = nieprzypisany
-  saldo: number | null; // saldo (grosze, ≤ 0), null gdy brak przypisanej składki
+  rate: number | null; // roczna składka z roli (grosze); null = zwolniony ze składek
+  saldo: number | null; // saldo (grosze, ≤ 0), null gdy zwolniony
   status: FeeStatus; // status bieżącego okresu (filtry/statystyki)
   cycles: FeeCycle[]; // historia cykli (siatka), od najstarszego do bieżącego
   paidYears: number[]; // wszystkie opłacone lata — do listy okresów w oknie rozliczenia
@@ -285,89 +278,27 @@ function CycleCell({ cycle, onClick }: { cycle: FeeCycle; onClick?: () => void }
   );
 }
 
-// Wybór składki (progu) dla członka — z listy zdefiniowanej w ustawieniach.
-function TierSelect({
-  memberId,
-  tierId,
-  tiers,
-  canManage,
-}: {
-  memberId: string;
-  tierId: string | null;
-  tiers: FeeTier[];
-  canManage: boolean;
-}) {
-  const router = useRouter();
-  const [value, setValue] = useState(tierId ?? "");
-  const [saving, startSave] = useTransition();
-
-  const current = tiers.find((t) => t.id === value);
-
-  if (!canManage) {
-    return (
-      <span className="block truncate text-sm text-muted-foreground">
-        {current ? `${current.label} · ${formatPLN(current.amount)}` : "brak składki"}
-      </span>
-    );
-  }
-
-  return (
-    <select
-      value={value}
-      disabled={saving}
-      aria-label="Składka członka"
-      className="h-8 w-full rounded-md border bg-card px-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60"
-      onChange={(e) => {
-        const next = e.target.value;
-        const prev = value;
-        setValue(next);
-        startSave(async () => {
-          try {
-            await setMemberTier(memberId, next);
-            router.refresh();
-            toast.success("Zapisano składkę członka.");
-          } catch (err) {
-            setValue(prev); // przywróć poprzedni wybór przy błędzie
-            toast.error(err instanceof Error ? err.message : "Nie udało się zapisać.");
-          }
-        });
-      }}
-    >
-      <option value="">— wybierz składkę —</option>
-      {tiers.map((t) => (
-        <option key={t.id} value={t.id}>
-          {t.label} · {formatPLN(t.amount)}
-        </option>
-      ))}
-    </select>
-  );
-}
-
-// Formularz rozliczenia składki: wybór okresu i typu składki. W starszym okresie
-// członek mógł mieć inną składkę, dlatego próg wybiera się tu osobno (nie bierzemy
-// na sztywno aktualnie przypisanego).
+// Formularz rozliczenia składki: wybór okresu (kwota wynika z roli członka).
 function SettleFeeDialog({
   open,
   onOpenChange,
   initialYear,
   memberId,
   memberName,
+  rate,
   year,
   foundedYear,
   paidYears,
-  tiers,
-  currentTierId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialYear: number | null; // rok klikniętej komórki — podstawiany przy otwarciu
   memberId: string;
   memberName: string;
+  rate: number | null; // roczna składka z roli (grosze)
   year: number;
   foundedYear: number | null;
   paidYears: number[];
-  tiers: FeeTier[];
-  currentTierId: string | null;
 }) {
   const router = useRouter();
   // Okresy do rozliczenia: od roku założenia stowarzyszenia (gdy jest starsze niż
@@ -382,7 +313,6 @@ function SettleFeeDialog({
   }, [foundedYear, year, paidYears]);
 
   const [yearSel, setYearSel] = useState(String(year));
-  const [tierSel, setTierSel] = useState(currentTierId ?? "");
   const [saving, startSave] = useTransition();
 
   // Przy każdym otwarciu ustaw okres: kliknięty rok (initialYear), a gdy go brak —
@@ -394,7 +324,6 @@ function SettleFeeDialog({
     if (open) {
       const firstUnpaid = periods.find((p) => !p.paid)?.year ?? year;
       setYearSel(String(initialYear ?? firstUnpaid));
-      setTierSel(currentTierId ?? "");
     }
   }
 
@@ -408,7 +337,7 @@ function SettleFeeDialog({
           await setFeePaid(memberId, Number(yearSel), false);
           toast.success(`Cofnięto rozliczenie składki za ${yearSel}.`);
         } else {
-          await setFeePaid(memberId, Number(yearSel), true, tierSel);
+          await setFeePaid(memberId, Number(yearSel), true);
           toast.success(`Rozliczono składkę za ${yearSel}.`);
         }
         router.refresh();
@@ -449,21 +378,13 @@ function SettleFeeDialog({
               Ten okres jest już rozliczony — możesz cofnąć rozliczenie.
             </p>
           ) : (
-            <label className="flex flex-col gap-1.5 text-sm">
-              <span className="font-medium">Typ składki</span>
-              <select
-                value={tierSel}
-                onChange={(e) => setTierSel(e.target.value)}
-                className={selectClass}
-              >
-                <option value="">— wybierz składkę —</option>
-                {tiers.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.label} · {formatPLN(t.amount)}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <p className="text-sm text-muted-foreground">
+              Kwota składki wynika z roli członka:{" "}
+              <span className="font-semibold text-foreground">
+                {rate != null ? formatPLN(rate) : "—"}
+              </span>
+              .
+            </p>
           )}
         </div>
 
@@ -474,7 +395,7 @@ function SettleFeeDialog({
           <Button
             type="button"
             onClick={submit}
-            disabled={saving || (!isPaid && !tierSel)}
+            disabled={saving}
             variant={isPaid ? "destructive" : "default"}
           >
             {isPaid ? "Cofnij rozliczenie" : "Oznacz opłaconą"}
@@ -493,13 +414,11 @@ function FeeRowItem({
   row,
   year,
   foundedYear,
-  tiers,
   canManage,
 }: {
   row: FeeRow;
   year: number;
   foundedYear: number | null;
-  tiers: FeeTier[];
   canManage: boolean;
 }) {
   const [settleOpen, setSettleOpen] = useState(false);
@@ -519,8 +438,15 @@ function FeeRowItem({
     });
   }
 
+  // Typ i stawka pod nazwą członka — jak w projekcie: „Rola · 120,00 zł / rok"
+  // albo „Rola · zwolniony ze składki" dla ról bez kwoty.
+  const typeRate =
+    row.status === "EXEMPT" || row.rate == null
+      ? `${row.roleName} · zwolniony ze składki`
+      : `${row.roleName} · ${formatPLN(row.rate)} / rok`;
+
   return (
-    <div className="grid grid-cols-[minmax(180px,1fr)_220px_96px_260px_150px] items-center gap-4 border-b px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40">
+    <div className="grid grid-cols-[minmax(180px,1fr)_220px_96px_150px] items-center gap-4 border-b px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40">
       <div className="flex min-w-0 items-center gap-3">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
           {row.initials}
@@ -530,7 +456,7 @@ function FeeRowItem({
             {row.name}
           </div>
           <div className="mt-0.5 truncate text-xs text-muted-foreground">
-            {row.roleName}
+            {typeRate}
           </div>
         </div>
       </div>
@@ -559,22 +485,6 @@ function FeeRowItem({
         {row.saldo == null ? "—" : formatPLN(row.saldo)}
       </div>
 
-      {/* składka (próg) opłacana w bieżącym okresie */}
-      <div className="min-w-0">
-        {row.status === "EXEMPT" ? (
-          <span className="block truncate text-sm text-muted-foreground">
-            Zwolniona ze składek
-          </span>
-        ) : (
-          <TierSelect
-            memberId={row.memberId}
-            tierId={row.tierId}
-            tiers={tiers}
-            canManage={canManage}
-          />
-        )}
-      </div>
-
       {/* akcja — przypomnienie o nierozliczonej składce */}
       <div className="flex justify-end">
         {canManage && row.status !== "PAID" && row.status !== "EXEMPT" ? (
@@ -599,11 +509,10 @@ function FeeRowItem({
           initialYear={settleYear}
           memberId={row.memberId}
           memberName={row.name}
+          rate={row.rate}
           year={year}
           foundedYear={foundedYear}
           paidYears={row.paidYears}
-          tiers={tiers}
-          currentTierId={row.tierId}
         />
       ) : null}
     </div>
@@ -615,7 +524,6 @@ export function FeesManager({
   year,
   foundedYear,
   rows,
-  tiers,
   canManage,
   collected,
   charged,
@@ -626,7 +534,6 @@ export function FeesManager({
   year: number;
   foundedYear: number | null;
   rows: FeeRow[];
-  tiers: FeeTier[];
   canManage: boolean;
   collected: number; // zebrano w bieżącym roku (grosze)
   charged: number; // naliczono w bieżącym roku (grosze)
@@ -725,11 +632,10 @@ export function FeesManager({
 
       {/* tabela */}
       <div className="overflow-hidden rounded-xl border bg-card">
-        <div className="grid grid-cols-[minmax(180px,1fr)_220px_96px_260px_150px] gap-4 border-b px-5 py-3 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
+        <div className="grid grid-cols-[minmax(180px,1fr)_220px_96px_150px] gap-4 border-b px-5 py-3 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
           <span>Członek</span>
           <span className="text-center">Okres składkowy</span>
           <span className="text-center">Saldo</span>
-          <span className="text-center">Składka</span>
           <span className="text-center">Akcja</span>
         </div>
 
@@ -739,7 +645,6 @@ export function FeesManager({
             row={row}
             year={year}
             foundedYear={foundedYear}
-            tiers={tiers}
             canManage={canManage}
           />
         ))}

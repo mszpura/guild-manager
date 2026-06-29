@@ -1,34 +1,31 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useTransition } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Trash2, Plus } from "lucide-react";
 import {
   setMembershipPaid,
-  addPaymentTier,
-  deletePaymentTier,
+  setRoleFee,
   setFeeDueDate,
   type TierFormState,
 } from "@/lib/actions/payments";
-import { formatPLN } from "@/lib/money";
 import { MONTHS_NOM, formatFeeDueDate } from "@/lib/payments";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
 
-type Tier = { id: string; label: string; amount: number };
+type RoleFee = { id: string; name: string; feeAmount: number | null };
 
 export function PaymentSettings({
   organizationId,
   membershipPaid,
-  tiers,
+  roles,
   feeDueMonth,
   feeDueDay,
 }: {
   organizationId: string;
   membershipPaid: boolean;
-  tiers: Tier[];
+  roles: RoleFee[];
   feeDueMonth: number | null;
   feeDueDay: number | null;
 }) {
@@ -52,7 +49,7 @@ export function PaymentSettings({
           <p className="font-medium">Członkostwo płatne</p>
           <p className="text-sm text-muted-foreground">
             {membershipPaid
-              ? "Zgłaszający wybiera próg składki i opłaca ją po wysłaniu formularza."
+              ? "Wysokość składki ustalasz osobno dla każdej roli poniżej."
               : "Członkostwo jest bezpłatne — formularz bez płatności."}
           </p>
         </div>
@@ -73,7 +70,7 @@ export function PaymentSettings({
             feeDueMonth={feeDueMonth}
             feeDueDay={feeDueDay}
           />
-          <TierManager organizationId={organizationId} tiers={tiers} />
+          <RoleFeeManager roles={roles} />
         </>
       ) : null}
     </div>
@@ -151,105 +148,92 @@ function FeeDueDateForm({
   );
 }
 
-function TierManager({
-  organizationId,
-  tiers,
-}: {
-  organizationId: string;
-  tiers: Tier[];
-}) {
-  const router = useRouter();
-  const formRef = useRef<HTMLFormElement>(null);
-  const action = addPaymentTier.bind(null, organizationId);
-  const [state, formAction, pending] = useActionState<TierFormState, FormData>(
-    action,
-    undefined,
+// Składka roczna per rola. Każda rola jest domyślnie zwolniona ze składek; podanie
+// kwoty obciąża rolę składką, a wyczyszczenie pola przywraca zwolnienie.
+function RoleFeeManager({ roles }: { roles: RoleFee[] }) {
+  return (
+    <div className="space-y-3 border-t pt-6">
+      <div>
+        <h3 className="text-sm font-medium">Składki według ról</h3>
+        <p className="text-sm text-muted-foreground">
+          Każda rola jest domyślnie zwolniona ze składek. Podaj roczną kwotę, aby
+          obciążyć daną rolę składką (puste pole = zwolnienie ze składek).
+        </p>
+      </div>
+      <ul className="divide-y rounded-md border">
+        {roles.map((role) => (
+          <RoleFeeRow key={role.id} role={role} />
+        ))}
+      </ul>
+    </div>
   );
-  const [deleting, startDelete] = useTransition();
+}
 
-  useEffect(() => {
-    if (state?.ok) {
-      formRef.current?.reset();
-      toast.success("Dodano próg składki.");
-    }
-  }, [state]);
+// Grosze → wartość wejściowa w złotówkach (np. 10000 → „100", 10050 → „100,50").
+function groszeToInput(amount: number | null): string {
+  if (amount == null) return "";
+  return amount % 100 === 0
+    ? String(amount / 100)
+    : (amount / 100).toFixed(2).replace(".", ",");
+}
 
-  function remove(id: string) {
-    startDelete(async () => {
-      try {
-        await deletePaymentTier(id);
-        router.refresh();
-        toast.success("Usunięto próg.");
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "Nie udało się usunąć.");
+function RoleFeeRow({ role }: { role: RoleFee }) {
+  const router = useRouter();
+  const initial = groszeToInput(role.feeAmount);
+  const [value, setValue] = useState(initial);
+  const [saving, startSave] = useTransition();
+
+  const dirty = value.trim() !== initial.trim();
+  const exempt = value.trim() === "";
+
+  function save() {
+    startSave(async () => {
+      const res = await setRoleFee(role.id, value);
+      if ("error" in res) {
+        toast.error(res.error);
+        return;
       }
+      router.refresh();
+      toast.success(
+        exempt
+          ? `Rola „${role.name}" zwolniona ze składek.`
+          : `Zapisano składkę roli „${role.name}".`,
+      );
     });
   }
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-medium text-muted-foreground">
-        Progi składki
-      </h3>
-
-      {tiers.length > 0 ? (
-        <ul className="divide-y rounded-md border">
-          {tiers.map((t) => (
-            <li
-              key={t.id}
-              className="flex items-center justify-between gap-2 px-3 py-2"
-            >
-              <span>
-                <span className="font-medium">{t.label}</span>
-                <span className="ml-2 text-muted-foreground">
-                  {formatPLN(t.amount)}
-                </span>
-              </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                onClick={() => remove(t.id)}
-                disabled={deleting || tiers.length <= 1}
-                aria-label={`Usuń próg ${t.label}`}
-                title={
-                  tiers.length <= 1
-                    ? "Musi pozostać co najmniej jedna składka"
-                    : undefined
-                }
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="text-sm text-muted-foreground">
-          Brak progów. Dodaj pierwszy poniżej.
-        </p>
-      )}
-
-      <form ref={formRef} action={formAction} className="flex items-end gap-3">
-        <Field className="flex-1">
-          <FieldLabel htmlFor="tier-label">Nazwa progu</FieldLabel>
-          <Input id="tier-label" name="label" placeholder="np. Dzieci" required />
-        </Field>
-        <Field className="w-32">
-          <FieldLabel htmlFor="tier-amount">Kwota (zł)</FieldLabel>
-          <Input
-            id="tier-amount"
-            name="amount"
+    <li className="flex items-center justify-between gap-3 px-3 py-2.5">
+      <div className="min-w-0">
+        <div className="truncate text-sm font-medium">{role.name}</div>
+        <div className="text-xs text-muted-foreground">
+          {exempt ? "Zwolniona ze składek" : "Składka roczna"}
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <div className="relative w-28">
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
             inputMode="decimal"
-            placeholder="70"
-            required
+            placeholder="—"
+            aria-label={`Roczna składka roli ${role.name}`}
+            className="h-9 w-full rounded-md border border-input bg-transparent pr-8 pl-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
           />
-        </Field>
-        <Button type="submit" disabled={pending} className="mb-0.5">
-          <Plus className="size-4" />
-          Dodaj
+          <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-sm text-muted-foreground">
+            zł
+          </span>
+        </div>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={save}
+          disabled={saving || !dirty}
+        >
+          Zapisz
         </Button>
-      </form>
-      {state?.error ? <FieldError>{state.error}</FieldError> : null}
-    </div>
+      </div>
+    </li>
   );
 }

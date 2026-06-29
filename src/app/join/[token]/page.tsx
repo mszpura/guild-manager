@@ -29,12 +29,17 @@ export default async function JoinPage({
         orderBy: { order: "asc" },
         select: { id: true, label: true, required: true, linkType: true },
       },
-      paymentTiers: {
-        orderBy: { order: "asc" },
-        select: { id: true, label: true, amount: true },
+      // Składka zgłaszającego wynika z roli domyślnej (Członek), którą otrzyma po
+      // przyjęciu. null = rola zwolniona ze składek (brak płatności na formularzu).
+      roles: {
+        where: { isDefault: true },
+        select: { name: true, feeAmount: true },
+        take: 1,
       },
     },
   });
+
+  const defaultRole = org?.roles[0] ?? null;
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/30 p-4">
@@ -59,7 +64,8 @@ export default async function JoinPage({
                   address: org.formAddress,
                 }}
                 paid={org.membershipPaid}
-                tiers={org.paymentTiers}
+                feeAmount={defaultRole?.feeAmount ?? null}
+                feeLabel={defaultRole?.name ?? null}
               />
             </CardContent>
           </>

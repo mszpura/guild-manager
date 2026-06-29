@@ -39,9 +39,11 @@ export async function submitApplication(
         orderBy: { order: "asc" },
         select: { id: true, label: true, required: true, linkType: true },
       },
-      paymentTiers: {
-        orderBy: { order: "asc" },
-        select: { id: true, label: true, amount: true },
+      // Składka zgłaszającego wynika z roli domyślnej (Członek), którą otrzyma po przyjęciu.
+      roles: {
+        where: { isDefault: true },
+        select: { name: true, feeAmount: true },
+        take: 1,
       },
     },
   });
@@ -125,27 +127,25 @@ export async function submitApplication(
     return { error: "Zgłoszenie z tym adresem e-mail już oczekuje na rozpatrzenie." };
   }
 
-  // Czy zgłoszenie wymaga płatności (płatne członkostwo + zdefiniowane progi).
-  const paid = org.membershipPaid && org.paymentTiers.length > 0;
+  // Składka zgłaszającego = roczna składka roli domyślnej (Członek). null = zwolniona.
+  const defaultRole = org.roles[0];
+  const fee =
+    org.membershipPaid && defaultRole && defaultRole.feeAmount != null
+      ? { label: defaultRole.name, amount: defaultRole.feeAmount }
+      : undefined;
+  // Czy zgłoszenie wymaga płatności (płatne członkostwo + składka roli domyślnej).
+  const paid = !!fee;
   // Zgłaszający może pominąć płatność online (opłaci przelewem lub ma już opłacone).
   const skipPayment = formData.get("skipPayment") === "on";
   // Płatność online prowadzimy tylko, gdy składka wymagana i niepominięta.
   const onlinePayment = paid && !skipPayment;
 
-  let tier: { id: string; label: string; amount: number } | undefined;
-  if (paid) {
-    const tierId = String(formData.get("paymentTier") ?? "");
-    tier = org.paymentTiers.find((t) => t.id === tierId);
-    if (!tier) {
-      return { error: "Wybierz próg składki." };
-    }
-    // Płatność włączona, ale brak skonfigurowanego Stripe → nie blokuj 500-tką.
-    if (onlinePayment && !getStripe()) {
-      return {
-        error:
-          "Płatności nie są obecnie skonfigurowane. Skontaktuj się z administratorem.",
-      };
-    }
+  // Płatność włączona, ale brak skonfigurowanego Stripe → nie blokuj 500-tką.
+  if (onlinePayment && !getStripe()) {
+    return {
+      error:
+        "Płatności nie są obecnie skonfigurowane. Skontaktuj się z administratorem.",
+    };
   }
 
   const application = await prisma.membershipApplication.create({
@@ -161,13 +161,13 @@ export async function submitApplication(
       // Pominięcie płatności online pozostawia status „oczekuje" — administrator
       // potwierdza wpłatę (np. przelew) przy rozpatrywaniu zgłoszenia.
       paymentStatus: paid ? PaymentStatus.PENDING : PaymentStatus.NOT_REQUIRED,
-      paymentTierLabel: tier?.label,
-      paymentAmount: tier?.amount,
+      paymentTierLabel: fee?.label,
+      paymentAmount: fee?.amount,
     },
   });
 
   // Bezpłatne członkostwo lub płatność pominięta — koniec, zgłoszenie czeka na rozpatrzenie.
-  if (!onlinePayment || !tier) {
+  if (!onlinePayment || !fee) {
     return { ok: true };
   }
 
@@ -178,8 +178,8 @@ export async function submitApplication(
   const base = `${proto}://${host}`;
 
   const session = await createCheckoutSession({
-    amount: tier.amount,
-    label: tier.label,
+    amount: fee.amount,
+    label: fee.label,
     email,
     applicationId: application.id,
     successUrl: `${base}/join/${token}/dziekujemy`,
@@ -204,7 +204,7 @@ export async function submitApplication(
     to: email,
     firstName,
     organizationName: org.name,
-    amountText: formatPLN(tier.amount),
+    amountText: formatPLN(fee.amount),
     paymentUrl: session.url,
   });
 

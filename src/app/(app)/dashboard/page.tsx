@@ -137,8 +137,7 @@ export default async function DashboardPage() {
             firstName: true,
             lastName: true,
             joinedAt: true,
-            paymentTier: { select: { amount: true } },
-            role: { select: { feeExempt: true } },
+            role: { select: { feeAmount: true } },
             membershipFees: { select: { year: true, amount: true } },
           },
         })
@@ -149,7 +148,7 @@ export default async function DashboardPage() {
   const feeSummary =
     canMembers && org?.membershipPaid
       ? summarizeFees(
-          feeMembers.map((m) => ({ ...m, feeExempt: m.role.feeExempt })),
+          feeMembers.map((m) => ({ ...m, feeAmount: m.role.feeAmount })),
           {
             feeDueMonth: org.feeDueMonth,
             feeDueDay: org.feeDueDay,

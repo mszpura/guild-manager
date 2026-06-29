@@ -198,12 +198,12 @@ export async function createOrganization(
         },
         {
           // Junior (§8/§11 ust. 2/§13 statutu): te same prawa co członek zwyczajny,
-          // ale bez prawa głosu i ze zwolnieniem ze składek.
+          // ale bez prawa głosu. Zwolnienie ze składek wynika z domyślnego braku
+          // kwoty składki na roli (feeAmount = null) — jak każda nowa rola.
           organizationId: org.id,
           name: "Junior",
           permissions: MEMBER_PERMISSIONS,
           canVote: false,
-          feeExempt: true,
         },
       ],
     });

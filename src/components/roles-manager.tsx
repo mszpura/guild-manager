@@ -23,7 +23,6 @@ type RoleItem = {
   permissions: unknown;
   isOwner: boolean;
   isSystem: boolean;
-  feeExempt: boolean;
   canVote: boolean;
   memberCount: number;
 };
@@ -224,18 +223,12 @@ function RoleRow({ role }: { role: RoleItem }) {
 
         <PermGrid permissions={role.permissions} />
 
-        <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:gap-8">
+        <div className="flex flex-col gap-3 border-t pt-4">
           <RoleFlag
             name="canVote"
             label="Może głosować"
             hint="Prawo głosu w uchwałach i punktach obrad."
             defaultChecked={role.canVote}
-          />
-          <RoleFlag
-            name="feeExempt"
-            label="Zwolniona ze składek"
-            hint="Członkowie tej roli nie opłacają składek."
-            defaultChecked={role.feeExempt}
           />
         </div>
 
@@ -282,10 +275,6 @@ function RoleRow({ role }: { role: RoleItem }) {
           <AttrPill
             label={role.canVote ? "Może głosować" : "Bez prawa głosu"}
             tone={role.canVote ? "green" : "muted"}
-          />
-          <AttrPill
-            label={role.feeExempt ? "Zwolniona ze składek" : "Opłaca składki"}
-            tone={role.feeExempt ? "muted" : "green"}
           />
         </div>
       </div>
@@ -347,18 +336,12 @@ function AddRoleRow({
         autoFocus
       />
       <PermGrid permissions={{}} />
-      <div className="flex flex-col gap-3 border-t pt-4 sm:flex-row sm:gap-8">
+      <div className="flex flex-col gap-3 border-t pt-4">
         <RoleFlag
           name="canVote"
           label="Może głosować"
           hint="Prawo głosu w uchwałach i punktach obrad."
           defaultChecked
-        />
-        <RoleFlag
-          name="feeExempt"
-          label="Zwolniona ze składek"
-          hint="Członkowie tej roli nie opłacają składek."
-          defaultChecked={false}
         />
       </div>
       {error ? <p className="text-sm text-destructive">{error}</p> : null}

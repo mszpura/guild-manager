@@ -213,13 +213,6 @@ export const applicationLinkSchema = z.object({
   required: z.boolean(),
 });
 
-// Walidacja etykiety progu składki (kwotę parsuje parsePLN w akcji).
-export const paymentTierLabelSchema = z
-  .string()
-  .trim()
-  .min(1, "Podaj nazwę progu.")
-  .max(100, "Nazwa progu jest za długa.");
-
 // Walidacja formularza spotkania. Lista uprawnionych ról i punkty porządku obrad
 // parsowane osobno w akcji (formData.getAll) — to pola wielokrotne.
 export const meetingSchema = z.object({

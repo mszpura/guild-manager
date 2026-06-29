@@ -16,8 +16,7 @@ export const memberProfileSelect = {
   address: true,
   customData: true,
   joinedAt: true,
-  role: { select: { name: true, feeExempt: true } },
-  paymentTier: { select: { label: true, amount: true } },
+  role: { select: { name: true, feeAmount: true } },
   membershipFees: { select: { year: true, amount: true } },
 } satisfies Prisma.MemberSelect;
 
@@ -106,7 +105,7 @@ export function MemberProfile({
 
   // Składki członka — tylko gdy członkostwo jest płatne.
   const feeResult = org?.membershipPaid
-    ? summarizeFees([{ ...member, feeExempt: member.role.feeExempt }], {
+    ? summarizeFees([{ ...member, feeAmount: member.role.feeAmount }], {
         feeDueMonth: org.feeDueMonth,
         feeDueDay: org.feeDueDay,
         foundedYear: org.foundedYear,
@@ -271,11 +270,9 @@ export function MemberProfile({
                     Składki
                   </h3>
                   <div className="mt-1 text-sm text-muted-foreground">
-                    {isExempt
+                    {isExempt || member.role.feeAmount == null
                       ? "Twoja rola jest zwolniona ze składek"
-                      : member.paymentTier
-                        ? `${member.paymentTier.label} · ${formatPLN(member.paymentTier.amount)} / rok`
-                        : "Składka nieprzypisana"}
+                      : `${member.role.name} · ${formatPLN(member.role.feeAmount)} / rok`}
                   </div>
                 </div>
                 {isExempt ? (
