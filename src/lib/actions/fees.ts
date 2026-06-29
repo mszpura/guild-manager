@@ -1,8 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { requireMember } from "@/lib/tenant";
+import { getActiveOrg, requireMember } from "@/lib/tenant";
+import { getStripe, createFeeCheckoutSession } from "@/lib/stripe";
+import { summarizeFees } from "@/lib/fees";
 
 // Oznacza składkę członka za dany rok jako opłaconą (paid=true) lub cofa to
 // oznaczenie (paid=false). Wymaga MEMBERS WRITE — operacyjne zarządzanie składkami
@@ -83,4 +87,87 @@ export async function setMemberTier(memberId: string, tierId: string) {
   });
   revalidatePath("/payments");
   revalidatePath("/dashboard");
+}
+
+// Rozpoczyna samodzielne opłacenie bieżącej (zaległej/oczekującej) składki przez
+// zalogowanego członka z poziomu „Mój profil". Liczy należny rok i kwotę z aktualnie
+// przypisanego progu, tworzy sesję Stripe Checkout i przekierowuje do płatności.
+// Faktyczne odnotowanie wpłaty robi webhook (bez udziału skarbnika). Zwraca komunikat
+// błędu, gdy płatności nie da się rozpocząć; w razie powodzenia przerywa redirectem.
+export async function startOwnFeePayment(): Promise<{ error: string } | undefined> {
+  const data = await getActiveOrg();
+  if (!data?.active) return { error: "Brak aktywnego stowarzyszenia." };
+  const orgId = data.active.organizationId;
+
+  // Tylko własna składka — wystarczy przynależność (bez dodatkowych uprawnień).
+  const me = await requireMember(orgId);
+
+  const [org, member] = await Promise.all([
+    prisma.organization.findUnique({
+      where: { id: orgId },
+      select: {
+        membershipPaid: true,
+        feeDueMonth: true,
+        feeDueDay: true,
+        foundedYear: true,
+      },
+    }),
+    prisma.member.findUnique({
+      where: { id: me.id },
+      select: {
+        email: true,
+        joinedAt: true,
+        paymentTier: { select: { label: true, amount: true } },
+        membershipFees: { select: { year: true, amount: true } },
+      },
+    }),
+  ]);
+
+  if (!org || !member) return { error: "Nie znaleziono danych członka." };
+  if (!org.membershipPaid) return { error: "Członkostwo jest obecnie bezpłatne." };
+  if (!getStripe()) {
+    return {
+      error: "Płatności nie są obecnie skonfigurowane. Skontaktuj się ze skarbnikiem.",
+    };
+  }
+  if (!member.paymentTier) {
+    return {
+      error: "Składka nie została przypisana — skontaktuj się ze skarbnikiem.",
+    };
+  }
+
+  // Należny rok = bieżący okres składkowy; pozwalamy płacić tylko gdy nieopłacony.
+  const summary = summarizeFees([member], {
+    feeDueMonth: org.feeDueMonth,
+    feeDueDay: org.feeDueDay,
+    foundedYear: org.foundedYear,
+    now: new Date(),
+  });
+  const result = summary.results[0];
+  if (result.currentStatus === "PAID") {
+    return { error: "Bieżąca składka jest już opłacona." };
+  }
+
+  const h = await headers();
+  const host = h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  const base = `${proto}://${host}`;
+
+  const session = await createFeeCheckoutSession({
+    amount: member.paymentTier.amount,
+    label: member.paymentTier.label,
+    email: member.email,
+    organizationId: orgId,
+    memberId: me.id,
+    year: summary.year,
+    successUrl: `${base}/profile?paid=1`,
+    cancelUrl: `${base}/profile`,
+  });
+
+  if (!session) {
+    return { error: "Nie udało się rozpocząć płatności. Spróbuj ponownie później." };
+  }
+
+  // redirect() rzuca wyjątkiem — musi być poza blokiem try/catch.
+  redirect(session.url);
 }

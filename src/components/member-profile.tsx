@@ -3,6 +3,7 @@ import { summarizeFees, type FeeCycleStatus } from "@/lib/fees";
 import { formatFeeDueDate } from "@/lib/payments";
 import { formatPLN } from "@/lib/money";
 import { parseCustomData } from "@/lib/links";
+import { PayFeeButton } from "@/components/pay-fee-button";
 
 // Wspólny select członka dla widoku profilu — używany przez „Mój profil" (własny)
 // oraz szczegóły członka w panelu (/members/[id]), by oba widoki były spójne.
@@ -70,9 +71,13 @@ const STATUS_BADGE: Record<
 export function MemberProfile({
   member,
   org,
+  payable = false,
 }: {
   member: MemberProfileData;
   org: MemberProfileOrg;
+  // Czy pokazać przycisk samodzielnego opłacenia składki online. Włączane tylko
+  // na widoku własnego profilu — w panelu skarbnika (/members/[id]) pozostaje off.
+  payable?: boolean;
 }) {
   const now = new Date();
   const fullName = [member.firstName, member.lastName].filter(Boolean).join(" ");
@@ -292,11 +297,21 @@ export function MemberProfile({
               </div>
               {feeResult.currentStatus !== "PAID" &&
               feeResult.feeAmount != null ? (
-                <p className="mt-3 text-xs text-muted-foreground">
-                  Składkę uregulujesz przelewem na konto stowarzyszenia
-                  {dueDate ? ` (termin do ${dueDate})` : ""}. Skarbnik odnotuje
-                  wpłatę w rejestrze składek.
-                </p>
+                payable ? (
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <PayFeeButton amountLabel={formatPLN(feeResult.feeAmount)} />
+                    <p className="text-xs text-muted-foreground">
+                      Opłać składkę online{dueDate ? ` (termin do ${dueDate})` : ""} —
+                      wpłata zostanie odnotowana automatycznie.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    Składkę uregulujesz przelewem na konto stowarzyszenia
+                    {dueDate ? ` (termin do ${dueDate})` : ""}. Skarbnik odnotuje
+                    wpłatę w rejestrze składek.
+                  </p>
+                )
               ) : null}
             </div>
 

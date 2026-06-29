@@ -12,13 +12,14 @@ export function getStripe(): Stripe | null {
   return cached;
 }
 
-// Tworzy hostowaną sesję Checkout (jednorazowa płatność w PLN).
+// Tworzy hostowaną sesję Checkout (jednorazowa płatność w PLN). Metadane wracają
+// w webhooku i decydują, co potwierdzić (zgłoszenie albo składkę członka).
 // Metody płatności (karta/BLIK/Przelewy24) wg ustawień konta Stripe.
-export async function createCheckoutSession(params: {
+async function createCheckout(params: {
   amount: number; // grosze
   label: string;
   email: string;
-  applicationId: string;
+  metadata: Record<string, string>;
   successUrl: string;
   cancelUrl: string;
 }): Promise<{ id: string; url: string } | null> {
@@ -39,7 +40,7 @@ export async function createCheckoutSession(params: {
           },
         },
       ],
-      metadata: { applicationId: params.applicationId },
+      metadata: params.metadata,
       success_url: params.successUrl,
       cancel_url: params.cancelUrl,
     });
@@ -49,4 +50,51 @@ export async function createCheckoutSession(params: {
     console.error("[stripe] Nie udało się utworzyć sesji Checkout:", error);
     return null;
   }
+}
+
+// Sesja Checkout dla płatności składki ze zgłoszenia (publiczny formularz).
+export async function createCheckoutSession(params: {
+  amount: number; // grosze
+  label: string;
+  email: string;
+  applicationId: string;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<{ id: string; url: string } | null> {
+  return createCheckout({
+    amount: params.amount,
+    label: params.label,
+    email: params.email,
+    metadata: { applicationId: params.applicationId },
+    successUrl: params.successUrl,
+    cancelUrl: params.cancelUrl,
+  });
+}
+
+// Sesja Checkout dla samodzielnego opłacenia rocznej składki przez członka
+// (z poziomu „Mój profil"). Metadane (kind=fee) pozwalają webhookowi odnotować
+// wpłatę w rejestrze składek bez udziału skarbnika.
+export async function createFeeCheckoutSession(params: {
+  amount: number; // grosze
+  label: string;
+  email: string;
+  organizationId: string;
+  memberId: string;
+  year: number;
+  successUrl: string;
+  cancelUrl: string;
+}): Promise<{ id: string; url: string } | null> {
+  return createCheckout({
+    amount: params.amount,
+    label: params.label,
+    email: params.email,
+    metadata: {
+      kind: "fee",
+      organizationId: params.organizationId,
+      memberId: params.memberId,
+      year: String(params.year),
+    },
+    successUrl: params.successUrl,
+    cancelUrl: params.cancelUrl,
+  });
 }

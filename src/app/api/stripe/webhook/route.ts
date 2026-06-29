@@ -28,11 +28,29 @@ export async function POST(req: Request) {
 
   if (event.type === "checkout.session.completed") {
     const session = event.data.object as Stripe.Checkout.Session;
-    const applicationId = session.metadata?.applicationId;
-    if (applicationId) {
-      // Idempotentnie: aktualizujemy tylko gdy nadal PENDING.
+    const meta = session.metadata ?? {};
+
+    if (meta.kind === "fee" && meta.memberId && meta.organizationId) {
+      // Samodzielna wpłata składki przez członka — odnotowujemy ją w rejestrze
+      // bez udziału skarbnika. Idempotentnie: gdy składka za dany rok już istnieje,
+      // nie nadpisujemy (powtórna dostawa webhooka nie zmienia daty/kwoty wpłaty).
+      const year = Number(meta.year);
+      if (Number.isInteger(year)) {
+        await prisma.membershipFee.upsert({
+          where: { memberId_year: { memberId: meta.memberId, year } },
+          create: {
+            organizationId: meta.organizationId,
+            memberId: meta.memberId,
+            year,
+            amount: session.amount_total ?? null,
+          },
+          update: {},
+        });
+      }
+    } else if (meta.applicationId) {
+      // Płatność składki ze zgłoszenia. Idempotentnie: aktualizujemy tylko gdy PENDING.
       await prisma.membershipApplication.updateMany({
-        where: { id: applicationId, paymentStatus: PaymentStatus.PENDING },
+        where: { id: meta.applicationId, paymentStatus: PaymentStatus.PENDING },
         data: { paymentStatus: PaymentStatus.PAID },
       });
     }

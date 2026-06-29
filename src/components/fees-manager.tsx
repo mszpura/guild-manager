@@ -187,7 +187,7 @@ function TierSelect({
 
   if (!canManage) {
     return (
-      <span className="text-xs text-muted-foreground">
+      <span className="block truncate text-sm text-muted-foreground">
         {current ? `${current.label} · ${formatPLN(current.amount)}` : "brak składki"}
       </span>
     );
@@ -198,7 +198,7 @@ function TierSelect({
       value={value}
       disabled={saving}
       aria-label="Składka członka"
-      className="h-6 max-w-[180px] rounded border bg-card px-1 text-xs text-muted-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60"
+      className="h-8 w-full rounded-md border bg-card px-2 text-sm text-foreground outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:opacity-60"
       onChange={(e) => {
         const next = e.target.value;
         const prev = value;
@@ -461,17 +461,18 @@ export function FeesManager({
 
       {/* tabela */}
       <div className="overflow-hidden rounded-xl border bg-card">
-        <div className="grid grid-cols-[minmax(180px,1fr)_220px_96px_150px] gap-4 border-b px-5 py-3 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
+        <div className="grid grid-cols-[minmax(180px,1fr)_220px_96px_260px_150px] gap-4 border-b px-5 py-3 text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
           <span>Członek</span>
-          <span>Okres składkowy</span>
-          <span>Saldo</span>
-          <span className="text-right">Akcja</span>
+          <span className="text-center">Okres składkowy</span>
+          <span className="text-center">Saldo</span>
+          <span>Składka</span>
+          <span className="text-center">Akcja</span>
         </div>
 
         {visible.map((row) => (
           <div
             key={row.memberId}
-            className="grid grid-cols-[minmax(180px,1fr)_220px_96px_150px] items-center gap-4 border-b px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40"
+            className="grid grid-cols-[minmax(180px,1fr)_220px_96px_260px_150px] items-center gap-4 border-b px-5 py-3.5 transition-colors last:border-b-0 hover:bg-muted/40"
           >
             <div className="flex min-w-0 items-center gap-3">
               <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
@@ -481,15 +482,8 @@ export function FeesManager({
                 <div className="truncate text-sm font-semibold text-foreground">
                   {row.name}
                 </div>
-                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className="shrink-0 truncate">{row.roleName}</span>
-                  <span aria-hidden>·</span>
-                  <TierSelect
-                    memberId={row.memberId}
-                    tierId={row.tierId}
-                    tiers={tiers}
-                    canManage={canManage}
-                  />
+                <div className="mt-0.5 truncate text-xs text-muted-foreground">
+                  {row.roleName}
                 </div>
               </div>
             </div>
@@ -509,6 +503,16 @@ export function FeesManager({
               )}
             >
               {row.saldo == null ? "—" : formatPLN(row.saldo)}
+            </div>
+
+            {/* składka (próg) opłacana w bieżącym okresie */}
+            <div className="min-w-0">
+              <TierSelect
+                memberId={row.memberId}
+                tierId={row.tierId}
+                tiers={tiers}
+                canManage={canManage}
+              />
             </div>
 
             <div className="flex justify-end">
