@@ -93,9 +93,9 @@ export default async function SettingsPage() {
         >
           {[
             ["org", "Stowarzyszenie"],
+            ["roles", "Role"],
             ["form", "Formularz"],
             ["payments", "Składki"],
-            ["roles", "Role"],
           ].map(([value, label]) => (
             <TabsTrigger
               key={value}
