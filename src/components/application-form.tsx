@@ -20,6 +20,8 @@ type CustomField = {
 };
 type FieldMode = "HIDDEN" | "OPTIONAL" | "REQUIRED";
 type FieldModes = { birthDate: FieldMode; phone: FieldMode; address: FieldMode };
+// Rola dostępna do wyboru na formularzu (feeAmount w groszach; null = zwolniona).
+type SelectableRole = { id: string; name: string; feeAmount: number | null };
 
 export function ApplicationForm({
   token,
@@ -27,17 +29,16 @@ export function ApplicationForm({
   customFields = [],
   fieldModes,
   paid = false,
-  feeAmount = null,
-  feeLabel = null,
+  roles = [],
 }: {
   token: string;
   organizationName: string;
   customFields?: CustomField[];
   fieldModes: FieldModes;
   paid?: boolean;
-  // Roczna składka roli domyślnej (grosze) i jej nazwa. null = rola zwolniona.
-  feeAmount?: number | null;
-  feeLabel?: string | null;
+  // Role dostępne do wyboru (domyślna pierwsza). Gdy więcej niż jedna — pokazujemy
+  // wybór roli; składka wynika z wybranej roli.
+  roles?: SelectableRole[];
 }) {
   const action = submitApplication.bind(null, token);
   const [state, formAction, pending] = useActionState<
@@ -46,6 +47,14 @@ export function ApplicationForm({
   >(action, undefined);
   // Zgłaszający deklaruje opłatę offline (przelew / już opłacona) — pomijamy płatność online.
   const [skipPayment, setSkipPayment] = useState(false);
+  // Wybrana rola (domyślnie pierwsza, czyli rola domyślna). Gdy do wyboru jest więcej
+  // niż jedna rola, zgłaszający może ją zmienić; składka wynika z wybranej roli.
+  const [selectedRoleId, setSelectedRoleId] = useState(roles[0]?.id ?? "");
+  const selectedRole =
+    roles.find((r) => r.id === selectedRoleId) ?? roles[0] ?? null;
+  const showRolePicker = roles.length > 1;
+  const feeAmount = selectedRole?.feeAmount ?? null;
+  const feeLabel = selectedRole?.name ?? null;
   const hasPayment = paid && feeAmount != null;
 
   if (state?.ok) {
@@ -117,6 +126,34 @@ export function ApplicationForm({
             name="address"
             required={fieldModes.address === "REQUIRED"}
           />
+        </Field>
+      ) : null}
+
+      {/* Wybrana rola wędruje do serwera zawsze (także gdy nie ma wyboru). */}
+      {selectedRole ? (
+        <input type="hidden" name="selectedRoleId" value={selectedRole.id} />
+      ) : null}
+
+      {showRolePicker ? (
+        <Field>
+          <FieldLabel htmlFor="rolePicker">Rodzaj członkostwa</FieldLabel>
+          <select
+            id="rolePicker"
+            value={selectedRoleId}
+            onChange={(e) => setSelectedRoleId(e.target.value)}
+            className="h-9 rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            {roles.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+                {paid && r.feeAmount != null ? ` — ${formatPLN(r.feeAmount)}` : ""}
+              </option>
+            ))}
+          </select>
+          <span className="text-xs text-muted-foreground">
+            Wybierz rolę, do której chcesz dołączyć. Zarząd zweryfikuje wybór przy
+            rozpatrywaniu zgłoszenia.
+          </span>
         </Field>
       ) : null}
 

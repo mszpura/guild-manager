@@ -141,10 +141,17 @@ model Role {
   feeAmount   Int?
   // Czy rola ma prawo głosu (głosowania nad uchwałami i punktami porządku obrad).
   canVote     Boolean  @default(true)
+  // Czy rola jest dostępna do wyboru na publicznym formularzu zgłoszeniowym.
+  // Gdy więcej niż jedna rola ma showInForm = true, zgłaszający wybiera rolę,
+  // do której dołącza (i którą opłaca). Rola Prezesa (isOwner) nigdy nie może być
+  // pokazana; rola domyślna (Członek, isDefault) jest zawsze pokazana niezależnie
+  // od tej flagi. Zarząd i tak weryfikuje wybór przy zatwierdzaniu zgłoszenia.
+  showInForm  Boolean  @default(false)
   createdAt   DateTime @default(now())
 
   members      Member[]
   meetingRoles MeetingRole[]
+  applications MembershipApplication[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -219,6 +226,12 @@ model MembershipApplication {
 
   // Odpowiedzi z pól własnych — migawka [{ label, value }] z chwili zgłoszenia.
   customData Json?
+
+  // Rola wybrana przez zgłaszającego na formularzu (gdy do wyboru była więcej niż
+  // jedna rola). Zarząd weryfikuje wybór przy zatwierdzaniu — może go zmienić.
+  // SetNull: usunięcie roli nie kasuje zgłoszenia (wraca do roli domyślnej).
+  selectedRole   Role?   @relation(fields: [selectedRoleId], references: [id], onDelete: SetNull)
+  selectedRoleId String?
 
   // Płatność (migawka składki domyślnej roli z chwili zgłoszenia + status ze Stripe).
   paymentStatus    PaymentStatus @default(NOT_REQUIRED)

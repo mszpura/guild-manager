@@ -56,6 +56,34 @@ export async function setRoleFee(
   return { ok: true };
 }
 
+// Włącza/wyłącza pokazywanie roli na publicznym formularzu zgłoszeniowym. OWNER/BOARD.
+// Reguły: rola Prezesa (isOwner) nie może być pokazana; rola domyślna (Członek)
+// jest zawsze pokazana i jej flagi nie da się wyłączyć.
+export async function setRoleShowInForm(
+  roleId: string,
+  show: boolean,
+): Promise<{ error: string } | { ok: true }> {
+  const role = await prisma.role.findUnique({
+    where: { id: roleId },
+    select: { organizationId: true, isOwner: true, isDefault: true },
+  });
+  if (!role) return { error: "Rola nie istnieje." };
+
+  await requireMember(role.organizationId, "SETTINGS", "WRITE");
+
+  if (role.isOwner && show) {
+    return { error: "Roli Prezesa nie można pokazać na formularzu." };
+  }
+  if (role.isDefault && !show) {
+    return { error: "Rola domyślna jest zawsze pokazana na formularzu." };
+  }
+
+  await prisma.role.update({ where: { id: roleId }, data: { showInForm: show } });
+
+  revalidatePath("/settings");
+  return { ok: true };
+}
+
 // Ustawia (lub czyści) roczny termin opłacenia składki. OWNER/BOARD.
 export async function setFeeDueDate(
   organizationId: string,

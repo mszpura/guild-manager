@@ -39,11 +39,13 @@ export async function submitApplication(
         orderBy: { order: "asc" },
         select: { id: true, label: true, required: true, linkType: true },
       },
-      // Składka zgłaszającego wynika z roli domyślnej (Członek), którą otrzyma po przyjęciu.
+      // Role dostępne na formularzu: domyślna (Członek) zawsze + oznaczone
+      // „Pokaż w formularzu", bez Prezesa. Składka zgłaszającego wynika z wybranej
+      // roli (feeAmount); null = rola zwolniona ze składek. Domyślna pierwsza.
       roles: {
-        where: { isDefault: true },
-        select: { name: true, feeAmount: true },
-        take: 1,
+        where: { isOwner: false, OR: [{ showInForm: true }, { isDefault: true }] },
+        orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+        select: { id: true, name: true, feeAmount: true, isDefault: true },
       },
     },
   });
@@ -127,11 +129,18 @@ export async function submitApplication(
     return { error: "Zgłoszenie z tym adresem e-mail już oczekuje na rozpatrzenie." };
   }
 
-  // Składka zgłaszającego = roczna składka roli domyślnej (Członek). null = zwolniona.
-  const defaultRole = org.roles[0];
+  // Wybór roli ze zgłoszenia. Walidujemy względem ról dostępnych na formularzu —
+  // wartość spoza listy (lub brak, gdy do wyboru była tylko jedna rola) sprowadzamy
+  // do roli domyślnej. Zarząd i tak zweryfikuje wybór przy zatwierdzaniu.
+  const selectedRoleId = String(formData.get("selectedRoleId") ?? "").trim();
+  const defaultRole = org.roles.find((r) => r.isDefault) ?? org.roles[0];
+  const selectedRole =
+    org.roles.find((r) => r.id === selectedRoleId) ?? defaultRole;
+
+  // Składka zgłaszającego = roczna składka wybranej roli. null = zwolniona.
   const fee =
-    org.membershipPaid && defaultRole && defaultRole.feeAmount != null
-      ? { label: defaultRole.name, amount: defaultRole.feeAmount }
+    org.membershipPaid && selectedRole && selectedRole.feeAmount != null
+      ? { label: selectedRole.name, amount: selectedRole.feeAmount }
       : undefined;
   // Czy zgłoszenie wymaga płatności (płatne członkostwo + składka roli domyślnej).
   const paid = !!fee;
@@ -158,6 +167,8 @@ export async function submitApplication(
       phone,
       address,
       customData: customData.length > 0 ? customData : undefined,
+      // Rola wybrana przez zgłaszającego (Zarząd zweryfikuje przy zatwierdzaniu).
+      selectedRoleId: selectedRole?.id,
       // Pominięcie płatności online pozostawia status „oczekuje" — administrator
       // potwierdza wpłatę (np. przelew) przy rozpatrywaniu zgłoszenia.
       paymentStatus: paid ? PaymentStatus.PENDING : PaymentStatus.NOT_REQUIRED,
@@ -212,8 +223,10 @@ export async function submitApplication(
 }
 
 // Zatwierdza zgłoszenie: tworzy członka, oznacza zgłoszenie, wysyła e-mail powitalny.
-// Dostęp: OWNER/BOARD danego stowarzyszenia.
-export async function approveApplication(applicationId: string) {
+// Dostęp: OWNER/BOARD danego stowarzyszenia. `roleId` — opcjonalne nadpisanie roli
+// przez Zarząd (weryfikacja wyboru zgłaszającego); bez niego stosujemy rolę wybraną
+// na formularzu, a w razie jej braku/nieprawidłowości rolę domyślną.
+export async function approveApplication(applicationId: string, roleId?: string) {
   const session = await auth();
   if (!session?.user) redirect("/signin");
 
@@ -229,12 +242,19 @@ export async function approveApplication(applicationId: string) {
     throw new Error("To zgłoszenie zostało już rozpatrzone.");
   }
 
-  // Rola domyślna stowarzyszenia (Członek) — nadawana zatwierdzonym.
-  const defaultRole = await prisma.role.findFirst({
-    where: { organizationId: application.organizationId, isDefault: true },
-    select: { id: true },
+  // Rola nadawana zatwierdzonemu: wybór Zarządu (roleId) → rola wybrana na formularzu
+  // (selectedRoleId) → rola domyślna. Każda musi należeć do tego stowarzyszenia i nie
+  // może być rolą Prezesa (jedyny właściciel nadawany przy zakładaniu).
+  const orgRoles = await prisma.role.findMany({
+    where: { organizationId: application.organizationId, isOwner: false },
+    select: { id: true, isDefault: true },
   });
+  const defaultRole = orgRoles.find((r) => r.isDefault);
   if (!defaultRole) throw new Error("Brak domyślnej roli w stowarzyszeniu.");
+  const targetRole =
+    orgRoles.find((r) => r.id === roleId) ??
+    orgRoles.find((r) => r.id === application.selectedRoleId) ??
+    defaultRole;
 
   // Transakcja: utwórz członka i oznacz zgłoszenie. unique(orgId,email) chroni
   // regułę „jeden e-mail = jeden członek" także przy wyścigu.
@@ -242,7 +262,7 @@ export async function approveApplication(applicationId: string) {
     await tx.member.create({
       data: {
         organizationId: application.organizationId,
-        roleId: defaultRole.id,
+        roleId: targetRole.id,
         firstName: application.firstName,
         lastName: application.lastName,
         email: application.email,

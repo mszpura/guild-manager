@@ -175,6 +175,8 @@ export async function createOrganization(
         permissions: MEMBER_PERMISSIONS,
         isSystem: true,
         isDefault: true,
+        // Rola domyślna jest zawsze dostępna na formularzu zgłoszeniowym.
+        showInForm: true,
       },
     });
     // Dodatkowe role zarządu zakładane od razu (edytowalne/usuwalne w ustawieniach),

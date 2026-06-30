@@ -29,17 +29,19 @@ export default async function JoinPage({
         orderBy: { order: "asc" },
         select: { id: true, label: true, required: true, linkType: true },
       },
-      // Składka zgłaszającego wynika z roli domyślnej (Członek), którą otrzyma po
-      // przyjęciu. null = rola zwolniona ze składek (brak płatności na formularzu).
+      // Role dostępne na formularzu: domyślna (Członek) zawsze + oznaczone
+      // „Pokaż w formularzu", z wyłączeniem Prezesa. Gdy jest ich więcej niż jedna,
+      // zgłaszający wybiera rolę, do której dołącza (i którą opłaca). Składka wynika
+      // z roli (feeAmount); null = rola zwolniona ze składek. Domyślna pierwsza.
       roles: {
-        where: { isDefault: true },
-        select: { name: true, feeAmount: true },
-        take: 1,
+        where: { isOwner: false, OR: [{ showInForm: true }, { isDefault: true }] },
+        orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+        select: { id: true, name: true, feeAmount: true },
       },
     },
   });
 
-  const defaultRole = org?.roles[0] ?? null;
+  const selectableRoles = org?.roles ?? [];
 
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/30 p-4">
@@ -64,8 +66,7 @@ export default async function JoinPage({
                   address: org.formAddress,
                 }}
                 paid={org.membershipPaid}
-                feeAmount={defaultRole?.feeAmount ?? null}
-                feeLabel={defaultRole?.name ?? null}
+                roles={selectableRoles}
               />
             </CardContent>
           </>

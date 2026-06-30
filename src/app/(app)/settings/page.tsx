@@ -68,7 +68,9 @@ export default async function SettingsPage() {
         permissions: true,
         isOwner: true,
         isSystem: true,
+        isDefault: true,
         feeAmount: true,
+        showInForm: true,
         canVote: true,
         _count: { select: { members: true } },
       },
@@ -184,6 +186,8 @@ export default async function SettingsPage() {
               <CardDescription>
                 Określ, czy członkostwo jest płatne, i ustal roczną składkę
                 osobno dla każdej roli (rola bez kwoty jest zwolniona ze składek).
+                Zaznacz też, które role mają być dostępne do wyboru na formularzu
+                zgłoszeniowym.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -194,6 +198,9 @@ export default async function SettingsPage() {
                   id: r.id,
                   name: r.name,
                   feeAmount: r.feeAmount,
+                  isOwner: r.isOwner,
+                  isDefault: r.isDefault,
+                  showInForm: r.showInForm,
                 }))}
                 feeDueMonth={org?.feeDueMonth ?? null}
                 feeDueDay={org?.feeDueDay ?? null}

@@ -42,10 +42,19 @@ export default async function ApplicationsPage() {
   const orgId = data.active.organizationId;
   await requireMember(orgId, "APPLICATIONS", "READ");
 
-  const applications = await prisma.membershipApplication.findMany({
-    where: { organizationId: orgId },
-    orderBy: [{ status: "asc" }, { createdAt: "desc" }], // PENDING najpierw
-  });
+  const [applications, roles] = await Promise.all([
+    prisma.membershipApplication.findMany({
+      where: { organizationId: orgId },
+      orderBy: [{ status: "asc" }, { createdAt: "desc" }], // PENDING najpierw
+      include: { selectedRole: { select: { id: true, name: true } } },
+    }),
+    // Role, na które Zarząd może przyjąć zgłaszającego (bez Prezesa). Domyślna pierwsza.
+    prisma.role.findMany({
+      where: { organizationId: orgId, isOwner: false },
+      orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
+      select: { id: true, name: true },
+    }),
+  ]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
@@ -69,6 +78,7 @@ export default async function ApplicationsPage() {
               <TableHead>E-mail</TableHead>
               <TableHead>Data urodzenia</TableHead>
               <TableHead>Dodatkowe dane</TableHead>
+              <TableHead>Wybrana rola</TableHead>
               <TableHead>Składka</TableHead>
               <TableHead>Zgłoszono</TableHead>
               <TableHead>Status</TableHead>
@@ -123,6 +133,13 @@ export default async function ApplicationsPage() {
                   })()}
                 </TableCell>
                 <TableCell>
+                  {a.selectedRole ? (
+                    a.selectedRole.name
+                  ) : (
+                    <span className="text-muted-foreground">Domyślna</span>
+                  )}
+                </TableCell>
+                <TableCell>
                   {a.paymentStatus === PaymentStatus.NOT_REQUIRED ? (
                     <span className="text-muted-foreground">—</span>
                   ) : (
@@ -149,7 +166,11 @@ export default async function ApplicationsPage() {
                 </TableCell>
                 <TableCell>
                   {a.status === ApplicationStatus.PENDING ? (
-                    <ApplicationActions applicationId={a.id} />
+                    <ApplicationActions
+                      applicationId={a.id}
+                      roles={roles}
+                      selectedRoleId={a.selectedRoleId}
+                    />
                   ) : null}
                 </TableCell>
               </TableRow>
