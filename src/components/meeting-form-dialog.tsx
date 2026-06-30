@@ -29,6 +29,7 @@ export type MeetingFormValues = {
   title: string;
   type: string;
   startsAtValue: string; // „RRRR-MM-DDTHH:mm” dla input[type=datetime-local]
+  isOnline: boolean;
   location: string;
   agendaItems: AgendaRow[];
   roleIds: string[];
@@ -53,6 +54,9 @@ export function MeetingFormDialog({
 
   // Punkty porządku obrad — każdy dodawany osobno. Pusta lista = brak porządku.
   const [agenda, setAgenda] = useState<AgendaRow[]>(meeting?.agendaItems ?? []);
+
+  // Forma spotkania: online (pole „Link do spotkania") albo stacjonarnie („Adres").
+  const [online, setOnline] = useState(meeting?.isOnline ?? false);
 
   function updateAgenda(index: number, value: string) {
     setAgenda((items) =>
@@ -95,6 +99,7 @@ export function MeetingFormDialog({
         if (!next) {
           setError(undefined);
           setAgenda(meeting?.agendaItems ?? []);
+          setOnline(meeting?.isOnline ?? false);
         }
       }}
     >
@@ -164,15 +169,36 @@ export function MeetingFormDialog({
             </Field>
           </div>
 
-          <Field>
-            <FieldLabel htmlFor="location">Miejsce spotkania</FieldLabel>
-            <Input
-              id="location"
-              name="location"
-              defaultValue={meeting?.location}
-              placeholder="Adres albo link do spotkania online"
-            />
-          </Field>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium">Forma spotkania</span>
+              <select
+                name="locationMode"
+                value={online ? "online" : "offline"}
+                onChange={(e) => setOnline(e.target.value === "online")}
+                className="h-9 rounded-md border bg-transparent px-2 text-sm"
+              >
+                <option value="offline">Offline</option>
+                <option value="online">Online</option>
+              </select>
+            </label>
+
+            <Field>
+              <FieldLabel htmlFor="location">
+                {online ? "Link do spotkania" : "Adres"}
+              </FieldLabel>
+              <Input
+                id="location"
+                name="location"
+                defaultValue={meeting?.location}
+                placeholder={
+                  online
+                    ? "https://meet.example.com/…"
+                    : "ul. Wspólna 12, Warszawa"
+                }
+              />
+            </Field>
+          </div>
 
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">Porządek obrad</legend>

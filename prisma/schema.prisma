@@ -309,7 +309,10 @@ model Meeting {
   title    String
   type     MeetingType
   startsAt DateTime // data i godzina rozpoczęcia
-  location String? // adres albo URL do spotkania online
+  // Forma spotkania: online (location = link do spotkania) albo stacjonarnie
+  // (location = adres). Steruje też tym, czy pokazujemy przycisk „Dołącz".
+  isOnline Boolean @default(false)
+  location String? // adres (stacjonarne) albo URL do spotkania (online)
 
   // Zakończenie spotkania. null = zaplanowane lub w toku (wg startsAt vs teraz).
   endedAt DateTime?

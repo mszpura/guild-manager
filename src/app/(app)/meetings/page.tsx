@@ -24,6 +24,7 @@ const meetingSelect = {
   title: true,
   type: true,
   startsAt: true,
+  isOnline: true,
   location: true,
   endedAt: true,
   allowedRoles: { select: { role: { select: { id: true, name: true } } } },
@@ -91,7 +92,6 @@ export default async function MeetingsPage() {
       : live
         ? "live"
         : "upcoming";
-    const isUrl = /^https?:\/\//i.test(m.location ?? "");
 
     return {
       id: m.id,
@@ -106,7 +106,7 @@ export default async function MeetingsPage() {
       whenLabel: live ? "Trwa" : cap(relativeDays(m.startsAt, now)),
       timeLabel: timeFmt.format(m.startsAt),
       location: m.location,
-      locationIsUrl: isUrl,
+      isOnline: m.isOnline,
       eligibility:
         m.allowedRoles.length === 0
           ? "Wszyscy członkowie"
@@ -123,6 +123,7 @@ export default async function MeetingsPage() {
               title: m.title,
               type: m.type,
               startsAtValue: toDateTimeLocalValue(m.startsAt),
+              isOnline: m.isOnline,
               location: m.location ?? "",
               agendaItems: m.agendaItems.map((a) => ({
                 id: a.id,

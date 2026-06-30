@@ -44,12 +44,13 @@ async function parseAllowedRoleIds(
   return roles.map((r) => r.id);
 }
 
-// Waliduje wspólne pola spotkania (tytuł, typ, termin, miejsce).
+// Waliduje wspólne pola spotkania (tytuł, typ, termin, forma + miejsce).
 function parseMeetingFields(formData: FormData) {
   return meetingSchema.safeParse({
     title: formData.get("title"),
     type: formData.get("type"),
     startsAt: formData.get("startsAt"),
+    isOnline: formData.get("locationMode") === "online",
     location: formData.get("location") ?? "",
   });
 }
@@ -105,6 +106,7 @@ export async function createMeeting(
       title: result.data.title,
       type: result.data.type,
       startsAt: result.data.startsAt,
+      isOnline: result.data.isOnline,
       location: result.data.location,
       // Organizatorem jest członek, który zwołał spotkanie.
       createdById: me.id,
@@ -181,6 +183,7 @@ export async function updateMeeting(
       title: result.data.title,
       type: result.data.type,
       startsAt: result.data.startsAt,
+      isOnline: result.data.isOnline,
       location: result.data.location,
       allowedRoles: {
         deleteMany: {},

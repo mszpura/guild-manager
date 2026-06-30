@@ -22,7 +22,7 @@ export type BoardMeeting = {
   timeLabel: string;
   // meta
   location: string | null;
-  locationIsUrl: boolean;
+  isOnline: boolean;
   eligibility: string;
   organizer: string | null;
   agendaCount: number;
@@ -157,10 +157,8 @@ export function MeetingsBoard({
 }
 
 function HeroCard({ meeting }: { meeting: BoardMeeting }) {
-  const joinHref =
-    meeting.locationIsUrl && meeting.location
-      ? meeting.location
-      : `/meetings/${meeting.id}`;
+  // „Dołącz" tylko dla spotkań online z podanym linkiem — przenosi wprost do linku.
+  const canJoin = meeting.isOnline && !!meeting.location;
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-foreground px-6 py-5 text-white sm:px-7">
@@ -196,15 +194,16 @@ function HeroCard({ meeting }: { meeting: BoardMeeting }) {
           >
             Szczegóły
           </Link>
-          <a
-            href={joinHref}
-            {...(meeting.locationIsUrl
-              ? { target: "_blank", rel: "noopener noreferrer" }
-              : {})}
-            className="rounded-[9px] bg-primary px-4.5 py-2.5 text-[13.5px] font-bold text-primary-foreground transition-colors hover:bg-[#3f6ee0]"
-          >
-            Dołącz
-          </a>
+          {canJoin ? (
+            <a
+              href={meeting.location!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-[9px] bg-primary px-4.5 py-2.5 text-[13.5px] font-bold text-primary-foreground transition-colors hover:bg-[#3f6ee0]"
+            >
+              Dołącz
+            </a>
+          ) : null}
         </div>
       </div>
     </div>
@@ -295,7 +294,7 @@ function MeetingCard({
           {meeting.location ? (
             <span className="flex items-center gap-1.5">
               <MapPin className="size-3.5 shrink-0" />
-              {meeting.locationIsUrl ? (
+              {meeting.isOnline ? (
                 <a
                   href={meeting.location}
                   target="_blank"

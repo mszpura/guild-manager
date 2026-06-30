@@ -226,6 +226,8 @@ export const meetingSchema = z.object({
   }),
   startsAt: z.coerce
     .date({ message: "Podaj poprawną datę i godzinę spotkania." }),
+  // Forma spotkania: online (link) albo stacjonarnie (adres).
+  isOnline: z.coerce.boolean(),
   location: z
     .string()
     .trim()

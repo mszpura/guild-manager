@@ -63,6 +63,7 @@ export default async function MeetingDetailPage({
       title: true,
       type: true,
       startsAt: true,
+      isOnline: true,
       location: true,
       endedAt: true,
       allowedRoles: { select: { role: { select: { id: true, name: true } } } },
@@ -200,7 +201,18 @@ export default async function MeetingDetailPage({
             {meeting.location ? (
               <span className="flex items-center gap-1.5">
                 <MapPin className="size-3.5" />
-                {meeting.location}
+                {meeting.isOnline ? (
+                  <a
+                    href={meeting.location}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary underline-offset-4 hover:underline"
+                  >
+                    {meeting.location}
+                  </a>
+                ) : (
+                  meeting.location
+                )}
               </span>
             ) : null}
           </div>
@@ -218,6 +230,7 @@ export default async function MeetingDetailPage({
                   title: meeting.title,
                   type: meeting.type,
                   startsAtValue: toDateTimeLocalValue(meeting.startsAt),
+                  isOnline: meeting.isOnline,
                   location: meeting.location ?? "",
                   agendaItems: agenda.map((a) => ({
                     id: a.id,
