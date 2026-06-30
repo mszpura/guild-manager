@@ -1,28 +1,22 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/permissions";
 import {
   MEETING_TYPE_LABELS,
+  MONTHS_SHORT,
+  MONTHS_LONG,
   attendableWhere,
   relativeDays,
+  organizerLabel,
   toDateTimeLocalValue,
 } from "@/lib/meetings";
 import { MeetingFormDialog } from "@/components/meeting-form-dialog";
-import { MeetingDeleteButton } from "@/components/meeting-delete-button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
-import { CalendarClock, MapPin, Users } from "lucide-react";
+import { MeetingsBoard, type BoardMeeting } from "@/components/meetings-board";
 
-const dateTimeFmt = new Intl.DateTimeFormat("pl-PL", {
-  dateStyle: "full",
-  timeStyle: "short",
+const timeFmt = new Intl.DateTimeFormat("pl-PL", {
+  hour: "2-digit",
+  minute: "2-digit",
 });
 
 const meetingSelect = {
@@ -37,18 +31,11 @@ const meetingSelect = {
     select: { id: true, title: true, votable: true },
     orderBy: { order: "asc" },
   },
+  createdBy: { select: { firstName: true, lastName: true } },
 } as const;
 
-type MeetingCardData = {
-  id: string;
-  title: string;
-  type: keyof typeof MEETING_TYPE_LABELS;
-  startsAt: Date;
-  location: string | null;
-  endedAt: Date | null;
-  allowedRoles: { role: { id: string; name: string } }[];
-  agendaItems: { id: string; title: string; votable: boolean }[];
-};
+// Pierwsza litera wielka — etykiety terminu z relativeDays są pisane małą literą.
+const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 export default async function MeetingsPage() {
   const data = await getActiveOrg();
@@ -94,208 +81,91 @@ export default async function MeetingsPage() {
       : Promise.resolve([] as { id: string; name: string }[]),
   ]);
 
+  type Row = (typeof upcoming)[number];
+
+  const decorate = (m: Row): BoardMeeting => {
+    const ended = m.endedAt !== null;
+    const live = !ended && m.startsAt <= now;
+    const state: BoardMeeting["state"] = ended
+      ? "done"
+      : live
+        ? "live"
+        : "upcoming";
+    const isUrl = /^https?:\/\//i.test(m.location ?? "");
+
+    return {
+      id: m.id,
+      title: m.title,
+      kind: MEETING_TYPE_LABELS[m.type].toUpperCase(),
+      mon: MONTHS_SHORT[m.startsAt.getMonth()],
+      day: String(m.startsAt.getDate()).padStart(2, "0"),
+      year: String(m.startsAt.getFullYear()),
+      dateLong: `${m.startsAt.getDate()} ${MONTHS_LONG[m.startsAt.getMonth()]} ${m.startsAt.getFullYear()}`,
+      state,
+      statusLabel: ended ? "Zakończone" : live ? "W toku" : "Zaplanowane",
+      whenLabel: live ? "Trwa" : cap(relativeDays(m.startsAt, now)),
+      timeLabel: timeFmt.format(m.startsAt),
+      location: m.location,
+      locationIsUrl: isUrl,
+      eligibility:
+        m.allowedRoles.length === 0
+          ? "Wszyscy członkowie"
+          : m.allowedRoles.map((r) => r.role.name).join(", "),
+      organizer: organizerLabel(m.createdBy),
+      agendaCount: m.agendaItems.length,
+      bucket: ended ? "done" : "upcoming",
+      ts: m.startsAt.getTime(),
+      // Zakończonych spotkań nie da się edytować (spójnie z updateMeeting).
+      edit:
+        isManager && !ended
+          ? {
+              id: m.id,
+              title: m.title,
+              type: m.type,
+              startsAtValue: toDateTimeLocalValue(m.startsAt),
+              location: m.location ?? "",
+              agendaItems: m.agendaItems.map((a) => ({
+                id: a.id,
+                title: a.title,
+                votable: a.votable,
+              })),
+              roleIds: m.allowedRoles.map((r) => r.role.id),
+            }
+          : null,
+    };
+  };
+
+  // Łączymy oba zbiory i sortujemy: najpierw nadchodzące (od najbliższego),
+  // potem zakończone (od najświeższego).
+  const meetings = [...upcoming, ...past].map(decorate).sort((a, b) => {
+    if (a.bucket !== b.bucket) return a.bucket === "upcoming" ? -1 : 1;
+    return a.bucket === "upcoming" ? a.ts - b.ts : b.ts - a.ts;
+  });
+
+  const today = `${now.getDate()} ${MONTHS_LONG[now.getMonth()]} ${now.getFullYear()}`;
+
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="mx-auto max-w-5xl space-y-[22px]">
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Spotkania</h1>
-          <p className="text-sm text-muted-foreground">
-            Walne zebrania i posiedzenia zarządu stowarzyszenia.
+          <h1 className="font-heading text-3xl font-extrabold tracking-tight">
+            Spotkania
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Zebrania, posiedzenia zarządu i spotkania robocze stowarzyszenia.
           </p>
         </div>
-        {isManager ? (
-          <MeetingFormDialog organizationId={orgId} roles={roles} />
-        ) : null}
-      </div>
-
-      <Tabs defaultValue="upcoming">
-        <TabsList
-          variant="line"
-          className="h-auto w-full justify-start gap-[30px] rounded-none border-b bg-transparent p-0"
-        >
-          {[
-            ["upcoming", `Nadchodzące (${upcoming.length})`],
-            ["past", `Odbyte (${past.length})`],
-          ].map(([value, label]) => (
-            <TabsTrigger
-              key={value}
-              value={value}
-              className="-mb-px flex-none rounded-none border-x-0 border-t-0 border-b-2 border-transparent px-0.5 pb-3.5 text-sm font-semibold text-muted-foreground shadow-none after:hidden hover:text-foreground data-active:border-b-primary data-active:font-bold data-active:text-foreground data-active:shadow-none"
-            >
-              {label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        <TabsContent value="upcoming" className="pt-2">
-          {upcoming.length === 0 ? (
-            <EmptyState>Brak zaplanowanych spotkań.</EmptyState>
-          ) : (
-            <div className="space-y-3">
-              {upcoming.map((m) => (
-                <MeetingCard
-                  key={m.id}
-                  meeting={m}
-                  isManager={isManager}
-                  roles={roles}
-                  now={now}
-                  upcoming
-                />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="past" className="pt-2">
-          {past.length === 0 ? (
-            <EmptyState>Brak odbytych spotkań.</EmptyState>
-          ) : (
-            <div className="space-y-3">
-              {past.map((m) => (
-                <MeetingCard
-                  key={m.id}
-                  meeting={m}
-                  isManager={isManager}
-                  roles={roles}
-                  now={now}
-                />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
-
-function MeetingCard({
-  meeting,
-  isManager,
-  roles,
-  now,
-  upcoming,
-}: {
-  meeting: MeetingCardData;
-  isManager: boolean;
-  roles: { id: string; name: string }[];
-  now: Date;
-  upcoming?: boolean;
-}) {
-  const isUrl = /^https?:\/\//i.test(meeting.location ?? "");
-  const ended = meeting.endedAt !== null;
-  const inProgress = !ended && meeting.startsAt <= now;
-
-  return (
-    <div className="group relative rounded-xl border bg-card p-5 transition-colors hover:border-primary/50">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">{MEETING_TYPE_LABELS[meeting.type]}</Badge>
-            {inProgress ? (
-              <Badge className="gap-1">
-                <span className="size-1.5 rounded-full bg-current" />
-                Spotkanie w toku
-              </Badge>
-            ) : null}
-            {ended ? (
-              <Badge variant="outline" className="text-muted-foreground">
-                Zakończone
-              </Badge>
-            ) : null}
-            {upcoming && !inProgress ? (
-              <span className="text-xs font-medium text-primary">
-                {relativeDays(meeting.startsAt, now)}
-              </span>
-            ) : null}
-          </div>
-          <h3 className="font-heading text-base font-bold">
-            <Link
-              href={`/meetings/${meeting.id}`}
-              className="after:absolute after:inset-0 after:rounded-xl hover:text-primary"
-            >
-              {meeting.title}
-            </Link>
-          </h3>
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <CalendarClock className="size-4 shrink-0" />
-            {dateTimeFmt.format(meeting.startsAt)}
-          </div>
-          {meeting.location ? (
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <MapPin className="size-4 shrink-0" />
-              {isUrl ? (
-                <a
-                  href={meeting.location}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="relative z-10 truncate text-primary underline-offset-4 hover:underline"
-                >
-                  {meeting.location}
-                </a>
-              ) : (
-                <span className="truncate">{meeting.location}</span>
-              )}
-            </div>
+        <div className="flex items-center gap-4">
+          <span className="hidden font-mono text-[12.5px] text-muted-foreground sm:inline">
+            Dziś · {today}
+          </span>
+          {isManager ? (
+            <MeetingFormDialog organizationId={orgId} roles={roles} />
           ) : null}
         </div>
-
-        {isManager ? (
-          <div className="relative z-10 flex shrink-0 items-center">
-            {!ended ? (
-              <MeetingFormDialog
-                organizationId=""
-                roles={roles}
-                meeting={{
-                  id: meeting.id,
-                  title: meeting.title,
-                  type: meeting.type,
-                  startsAtValue: toDateTimeLocalValue(meeting.startsAt),
-                  location: meeting.location ?? "",
-                  agendaItems: meeting.agendaItems.map((a) => ({
-                    id: a.id,
-                    title: a.title,
-                    votable: a.votable,
-                  })),
-                  roleIds: meeting.allowedRoles.map((r) => r.role.id),
-                }}
-              />
-            ) : null}
-            <MeetingDeleteButton meetingId={meeting.id} title={meeting.title} />
-          </div>
-        ) : null}
       </div>
 
-      {meeting.agendaItems.length > 0 ? (
-        <div className="mt-4">
-          <p className="mb-1 text-xs font-bold tracking-wide text-muted-foreground">
-            PORZĄDEK OBRAD
-          </p>
-          <ul className="space-y-1 text-sm">
-            {meeting.agendaItems.map((item) => (
-              <li key={item.id} className="text-foreground/90">
-                {item.title}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      <div className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
-        <Users className="size-3.5 shrink-0" />
-        {meeting.allowedRoles.length === 0 ? (
-          <span>Wszyscy członkowie</span>
-        ) : (
-          <span>{meeting.allowedRoles.map((r) => r.role.name).join(", ")}</span>
-        )}
-      </div>
+      <MeetingsBoard meetings={meetings} isManager={isManager} roles={roles} />
     </div>
-  );
-}
-
-function EmptyState({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-      {children}
-    </p>
   );
 }

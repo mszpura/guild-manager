@@ -87,7 +87,7 @@ export async function createMeeting(
   _prev: MeetingFormState,
   formData: FormData,
 ): Promise<MeetingFormState> {
-  await requireMember(organizationId, "MEETINGS", "WRITE");
+  const me = await requireMember(organizationId, "MEETINGS", "WRITE");
 
   const result = parseMeetingFields(formData);
   if (!result.success) {
@@ -106,6 +106,8 @@ export async function createMeeting(
       type: result.data.type,
       startsAt: result.data.startsAt,
       location: result.data.location,
+      // Organizatorem jest członek, który zwołał spotkanie.
+      createdById: me.id,
       allowedRoles: { create: roleIds.map((roleId) => ({ roleId })) },
       agendaItems: {
         create: agenda.items.map((it, i) => ({

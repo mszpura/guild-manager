@@ -39,6 +39,28 @@ export function toDateTimeLocalValue(date: Date): string {
   );
 }
 
+// Skrócone i pełne nazwy miesięcy (PL) — używane na „kafelku daty" i w nagłówku.
+export const MONTHS_SHORT = [
+  "STY", "LUT", "MAR", "KWI", "MAJ", "CZE",
+  "LIP", "SIE", "WRZ", "PAŹ", "LIS", "GRU",
+];
+export const MONTHS_LONG = [
+  "stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca",
+  "lipca", "sierpnia", "września", "października", "listopada", "grudnia",
+];
+
+// Krótka forma nazwiska organizatora („Jan Kowalski" → „J. Kowalski").
+// Gdy brak nazwiska — samo imię; gdy brak organizatora — null.
+export function organizerLabel(
+  person: { firstName: string; lastName: string | null } | null,
+): string | null {
+  if (!person) return null;
+  const initial = person.firstName.trim().charAt(0);
+  return person.lastName
+    ? `${initial}. ${person.lastName}`
+    : person.firstName;
+}
+
 // Względny opis terminu spotkania (np. „dziś”, „jutro”, „za 5 dni”).
 export function relativeDays(startsAt: Date, now: Date): string {
   const startDay = new Date(

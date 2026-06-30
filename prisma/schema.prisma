@@ -260,7 +260,8 @@ model Member {
 
   // Roczna kwota składki członka wynika z jego roli (Role.feeAmount); null = zwolniony.
 
-  attendances     MeetingAttendance[]
+  attendances       MeetingAttendance[]
+  meetingsOrganized Meeting[]
   agendaComments  AgendaComment[]
   agendaVotes     AgendaVote[]
   resolutionVotes      ResolutionVote[]
@@ -313,6 +314,12 @@ model Meeting {
   // Zakończenie spotkania. null = zaplanowane lub w toku (wg startsAt vs teraz).
   endedAt DateTime?
 
+  // Kto zwołał spotkanie (członek-organizator). Nullable — spotkania utworzone
+  // przed wprowadzeniem pola nie mają organizatora; przy usunięciu członka wpis
+  // zostaje bez organizatora (SetNull).
+  createdBy   Member? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdById String?
+
   // Role uprawnione do udziału. Pusta lista = wszyscy członkowie.
   allowedRoles MeetingRole[]
   agendaItems  AgendaItem[]
@@ -322,6 +329,7 @@ model Meeting {
   updatedAt DateTime @updatedAt
 
   @@index([organizationId, startsAt])
+  @@index([createdById])
 }
 
 // Łącznik wiele-do-wielu: które role mogą wziąć udział w danym spotkaniu.
