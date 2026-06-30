@@ -3,7 +3,6 @@ import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/permissions";
 import {
-  MEETING_TYPE_LABELS,
   MONTHS_SHORT,
   MONTHS_LONG,
   attendableWhere,
@@ -22,12 +21,17 @@ const timeFmt = new Intl.DateTimeFormat("pl-PL", {
 const meetingSelect = {
   id: true,
   title: true,
-  type: true,
+  meetingTypeId: true,
+  meetingType: {
+    select: {
+      name: true,
+      roles: { select: { role: { select: { name: true } } } },
+    },
+  },
   startsAt: true,
   isOnline: true,
   location: true,
   endedAt: true,
-  allowedRoles: { select: { role: { select: { id: true, name: true } } } },
   agendaItems: {
     select: { id: true, title: true, votable: true },
     orderBy: { order: "asc" },
@@ -51,7 +55,7 @@ export default async function MeetingsPage() {
 
   const now = new Date();
 
-  const [upcoming, past, roles] = await Promise.all([
+  const [upcoming, past, meetingTypes] = await Promise.all([
     // Nadchodzące: zarządzający widzą wszystkie; pozostali tylko te, w których
     // mogą wziąć udział (rola na liście lub spotkanie otwarte dla wszystkich).
     prisma.meeting.findMany({
@@ -74,9 +78,9 @@ export default async function MeetingsPage() {
       take: 50,
     }),
     isManager
-      ? prisma.role.findMany({
+      ? prisma.meetingType.findMany({
           where: { organizationId: orgId },
-          orderBy: [{ isOwner: "desc" }, { isSystem: "desc" }, { createdAt: "asc" }],
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
           select: { id: true, name: true },
         })
       : Promise.resolve([] as { id: string; name: string }[]),
@@ -96,7 +100,7 @@ export default async function MeetingsPage() {
     return {
       id: m.id,
       title: m.title,
-      kind: MEETING_TYPE_LABELS[m.type].toUpperCase(),
+      kind: m.meetingType.name.toUpperCase(),
       mon: MONTHS_SHORT[m.startsAt.getMonth()],
       day: String(m.startsAt.getDate()).padStart(2, "0"),
       year: String(m.startsAt.getFullYear()),
@@ -108,9 +112,9 @@ export default async function MeetingsPage() {
       location: m.location,
       isOnline: m.isOnline,
       eligibility:
-        m.allowedRoles.length === 0
+        m.meetingType.roles.length === 0
           ? "Wszyscy członkowie"
-          : m.allowedRoles.map((r) => r.role.name).join(", "),
+          : m.meetingType.roles.map((r) => r.role.name).join(", "),
       organizer: organizerLabel(m.createdBy),
       agendaCount: m.agendaItems.length,
       bucket: ended ? "done" : "upcoming",
@@ -121,7 +125,7 @@ export default async function MeetingsPage() {
           ? {
               id: m.id,
               title: m.title,
-              type: m.type,
+              meetingTypeId: m.meetingTypeId,
               startsAtValue: toDateTimeLocalValue(m.startsAt),
               isOnline: m.isOnline,
               location: m.location ?? "",
@@ -130,7 +134,6 @@ export default async function MeetingsPage() {
                 title: a.title,
                 votable: a.votable,
               })),
-              roleIds: m.allowedRoles.map((r) => r.role.id),
             }
           : null,
     };
@@ -161,12 +164,19 @@ export default async function MeetingsPage() {
             Dziś · {today}
           </span>
           {isManager ? (
-            <MeetingFormDialog organizationId={orgId} roles={roles} />
+            <MeetingFormDialog
+              organizationId={orgId}
+              meetingTypes={meetingTypes}
+            />
           ) : null}
         </div>
       </div>
 
-      <MeetingsBoard meetings={meetings} isManager={isManager} roles={roles} />
+      <MeetingsBoard
+        meetings={meetings}
+        isManager={isManager}
+        meetingTypes={meetingTypes}
+      />
     </div>
   );
 }

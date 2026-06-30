@@ -1,16 +1,6 @@
-// Domena spotkań: etykiety typów + reguła „kto widzi spotkanie wśród nadchodzących”.
+// Domena spotkań: reguła „kto widzi spotkanie wśród nadchodzących” + kworum.
 // Tylko importy typów z wygenerowanego klienta — bezpieczne też w komponentach klienta.
-import type { Prisma, MeetingType } from "@/generated/prisma/client";
-
-export const MEETING_TYPE_LABELS: Record<MeetingType, string> = {
-  GENERAL_ASSEMBLY: "Walne zebranie",
-  BOARD_MEETING: "Posiedzenie zarządu",
-};
-
-export const MEETING_TYPES: MeetingType[] = [
-  "GENERAL_ASSEMBLY",
-  "BOARD_MEETING",
-];
+import type { Prisma } from "@/generated/prisma/client";
 
 // Próg kworum: odsetek obecnych uprawnionych wymagany do ważnego głosowania.
 export const QUORUM_THRESHOLD = 50;
@@ -22,10 +12,13 @@ export function hasQuorum(presentCount: number, eligibleTotal: number): boolean 
 }
 
 // Filtr Prisma: spotkania, w których członek o danej roli może wziąć udział.
-// Pusta lista ról = spotkanie otwarte dla wszystkich członków.
+// Role uprawnione wynikają z typu spotkania; pusta lista ról na typie = spotkanie
+// otwarte dla wszystkich członków.
 export function attendableWhere(roleId: string): Prisma.MeetingWhereInput {
   return {
-    OR: [{ allowedRoles: { none: {} } }, { allowedRoles: { some: { roleId } } }],
+    meetingType: {
+      OR: [{ roles: { none: {} } }, { roles: { some: { roleId } } }],
+    },
   };
 }
 

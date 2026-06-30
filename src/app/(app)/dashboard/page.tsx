@@ -3,11 +3,7 @@ import Link from "next/link";
 import { getActiveOrg } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/permissions";
-import {
-  MEETING_TYPE_LABELS,
-  attendableWhere,
-  relativeDays,
-} from "@/lib/meetings";
+import { attendableWhere, relativeDays } from "@/lib/meetings";
 import {
   RESOLUTION_STATUS_LABELS,
   RESOLUTION_STATUS_BADGE,
@@ -95,7 +91,7 @@ export default async function DashboardPage() {
       select: {
         id: true,
         title: true,
-        type: true,
+        meetingType: { select: { name: true } },
         startsAt: true,
         location: true,
         agendaItems: {
@@ -216,7 +212,7 @@ export default async function DashboardPage() {
           {nextMeeting ? (
             <>
               <div className="font-heading text-lg font-extrabold leading-tight">
-                {MEETING_TYPE_LABELS[nextMeeting.type]}
+                {nextMeeting.meetingType.name}
               </div>
               <div className="mt-2 text-xs font-medium text-white/70">
                 {relativeDays(nextMeeting.startsAt, now)} ·{" "}

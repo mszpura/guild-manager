@@ -33,7 +33,7 @@ export type BoardMeeting = {
   edit: MeetingFormValues | null;
 };
 
-type RoleOption = { id: string; name: string };
+type MeetingTypeOption = { id: string; name: string };
 type Filter = "all" | "upcoming" | "done";
 
 // Kolory statusu — spójne z kafelkiem daty i etykietą terminu.
@@ -51,11 +51,11 @@ const STATUS_DOT: Record<BoardMeeting["state"], string> = {
 export function MeetingsBoard({
   meetings,
   isManager,
-  roles,
+  meetingTypes,
 }: {
   meetings: BoardMeeting[];
   isManager: boolean;
-  roles: RoleOption[];
+  meetingTypes: MeetingTypeOption[];
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [hidePast, setHidePast] = useState(false);
@@ -147,7 +147,7 @@ export function MeetingsBoard({
               key={m.id}
               meeting={m}
               isManager={isManager}
-              roles={roles}
+              meetingTypes={meetingTypes}
             />
           ))}
         </div>
@@ -213,11 +213,11 @@ function HeroCard({ meeting }: { meeting: BoardMeeting }) {
 function MeetingCard({
   meeting,
   isManager,
-  roles,
+  meetingTypes,
 }: {
   meeting: BoardMeeting;
   isManager: boolean;
-  roles: RoleOption[];
+  meetingTypes: MeetingTypeOption[];
 }) {
   const isDone = meeting.state === "done";
   const chipTint = isDone
@@ -373,7 +373,7 @@ function MeetingCard({
               {meeting.edit ? (
                 <MeetingFormDialog
                   organizationId=""
-                  roles={roles}
+                  meetingTypes={meetingTypes}
                   meeting={meeting.edit}
                 />
               ) : null}

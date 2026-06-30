@@ -121,6 +121,7 @@ model Organization {
   applicationFields ApplicationField[]
   membershipFees    MembershipFee[]
   meetings          Meeting[]
+  meetingTypes      MeetingType[]
   resolutions       Resolution[]
 }
 
@@ -149,9 +150,9 @@ model Role {
   showInForm  Boolean  @default(false)
   createdAt   DateTime @default(now())
 
-  members      Member[]
-  meetingRoles MeetingRole[]
-  applications MembershipApplication[]
+  members          Member[]
+  meetingTypeRoles MeetingTypeRole[]
+  applications     MembershipApplication[]
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -307,21 +308,51 @@ model MembershipFee {
 
 // ─── Domena: spotkania (walne zebrania, posiedzenia zarządu) ─────────────────
 
-enum MeetingType {
-  GENERAL_ASSEMBLY // Walne zebranie
-  BOARD_MEETING // Posiedzenie zarządu
+// Konfigurowalny typ spotkania (per stowarzyszenie). Zastępuje dawny enum:
+// administrator definiuje nazwę, role biorące udział oraz to, czy do ważnego
+// głosowania wymagane jest kworum. Role i wymóg kworum dziedziczą wszystkie
+// spotkania danego typu (nie konfiguruje się ich już na pojedynczym spotkaniu).
+model MeetingType {
+  id             String       @id @default(cuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  name           String
+  // Czy do ważnego głosowania wymagane jest kworum (próg QUORUM_THRESHOLD).
+  requiresQuorum Boolean @default(true)
+  order          Int     @default(0) // kolejność na liście/typach do wyboru
+  createdAt      DateTime @default(now())
+
+  // Role biorące udział w spotkaniach tego typu. Pusta lista = wszyscy członkowie.
+  roles    MeetingTypeRole[]
+  meetings Meeting[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
 }
 
-// Spotkanie stowarzyszenia. Lista uprawnionych ról steruje tym, kto widzi je
-// wśród „nadchodzących”. Brak ról (pusta lista) = otwarte dla wszystkich członków.
+// Łącznik wiele-do-wielu: które role biorą udział w spotkaniach danego typu.
+model MeetingTypeRole {
+  meetingType   MeetingType @relation(fields: [meetingTypeId], references: [id], onDelete: Cascade)
+  meetingTypeId String
+  role          Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  roleId        String
+
+  @@id([meetingTypeId, roleId])
+  @@index([roleId])
+}
+
+// Spotkanie stowarzyszenia. Kto może wziąć w nim udział (i kto widzi je wśród
+// „nadchodzących”) wynika z konfiguracji jego typu (MeetingType.roles).
 model Meeting {
   id             String       @id @default(cuid())
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   organizationId String
 
-  title    String
-  type     MeetingType
-  startsAt DateTime // data i godzina rozpoczęcia
+  title         String
+  meetingType   MeetingType @relation(fields: [meetingTypeId], references: [id])
+  meetingTypeId String
+  startsAt      DateTime // data i godzina rozpoczęcia
   // Forma spotkania: online (location = link do spotkania) albo stacjonarnie
   // (location = adres). Steruje też tym, czy pokazujemy przycisk „Dołącz".
   isOnline Boolean @default(false)
@@ -336,8 +367,6 @@ model Meeting {
   createdBy   Member? @relation(fields: [createdById], references: [id], onDelete: SetNull)
   createdById String?
 
-  // Role uprawnione do udziału. Pusta lista = wszyscy członkowie.
-  allowedRoles MeetingRole[]
   agendaItems  AgendaItem[]
   attendances  MeetingAttendance[]
 
@@ -346,17 +375,7 @@ model Meeting {
 
   @@index([organizationId, startsAt])
   @@index([createdById])
-}
-
-// Łącznik wiele-do-wielu: które role mogą wziąć udział w danym spotkaniu.
-model MeetingRole {
-  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  meetingId String
-  role      Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  roleId    String
-
-  @@id([meetingId, roleId])
-  @@index([roleId])
+  @@index([meetingTypeId])
 }
 
 enum AgendaItemStatus {

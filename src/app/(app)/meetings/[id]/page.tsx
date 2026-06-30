@@ -3,11 +3,7 @@ import Link from "next/link";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/permissions";
-import {
-  MEETING_TYPE_LABELS,
-  QUORUM_THRESHOLD,
-  toDateTimeLocalValue,
-} from "@/lib/meetings";
+import { QUORUM_THRESHOLD, toDateTimeLocalValue } from "@/lib/meetings";
 import { MeetingFormDialog } from "@/components/meeting-form-dialog";
 import {
   AgendaDecideControls,
@@ -61,12 +57,18 @@ export default async function MeetingDetailPage({
     select: {
       id: true,
       title: true,
-      type: true,
+      meetingTypeId: true,
+      meetingType: {
+        select: {
+          name: true,
+          requiresQuorum: true,
+          roles: { select: { roleId: true } },
+        },
+      },
       startsAt: true,
       isOnline: true,
       location: true,
       endedAt: true,
-      allowedRoles: { select: { role: { select: { id: true, name: true } } } },
       agendaItems: {
         orderBy: { order: "asc" },
         select: {
@@ -93,12 +95,18 @@ export default async function MeetingDetailPage({
   });
   if (!meeting) notFound();
 
-  // Uprawnieni do udziału: członkowie o dozwolonych rolach (lub wszyscy, gdy brak ograniczeń).
-  const allowedRoleIds = meeting.allowedRoles.map((r) => r.role.id);
-  const [members, roles] = await Promise.all([
+  // Lista obecności zawiera wyłącznie członków liczących się do kworum — tj. o
+  // rolach z prawem głosu (§17 ust. 3 statutu). Członkowie ról bez prawa głosu
+  // (np. Junior) nie są wymagani do kworum, więc nie pojawiają się na liście.
+  // Dodatkowo filtrujemy po rolach uprawnionych z typu spotkania (lub wszyscy,
+  // gdy typ nie ogranicza ról). Wymóg kworum również wynika z typu spotkania.
+  const allowedRoleIds = meeting.meetingType.roles.map((r) => r.roleId);
+  const requiresQuorum = meeting.meetingType.requiresQuorum;
+  const [members, meetingTypes] = await Promise.all([
     prisma.member.findMany({
       where: {
         organizationId: orgId,
+        role: { is: { canVote: true } },
         ...(allowedRoleIds.length ? { roleId: { in: allowedRoleIds } } : {}),
       },
       orderBy: [
@@ -110,13 +118,13 @@ export default async function MeetingDetailPage({
         id: true,
         firstName: true,
         lastName: true,
-        role: { select: { name: true, canVote: true } },
+        role: { select: { name: true } },
       },
     }),
     isManager
-      ? prisma.role.findMany({
+      ? prisma.meetingType.findMany({
           where: { organizationId: orgId },
-          orderBy: [{ isOwner: "desc" }, { isSystem: "desc" }, { createdAt: "asc" }],
+          orderBy: [{ order: "asc" }, { createdAt: "asc" }],
           select: { id: true, name: true },
         })
       : Promise.resolve([] as { id: string; name: string }[]),
@@ -128,17 +136,15 @@ export default async function MeetingDetailPage({
     present: presentMap.get(m.id) ?? false,
   }));
 
+  // Wszyscy na liście liczą się do kworum (filtr canVote powyżej), więc frekwencja
+  // i kworum opierają się na tym samym zbiorze obecnych.
   const attTotal = attendees.length;
   const presentCount = attendees.filter((a) => a.present).length;
-  // Kworum liczymy wyłącznie z członków o rolach z prawem głosu (§17 ust. 3 statutu);
-  // pozostali mogą uczestniczyć i być odnotowani na liście obecności, ale nie wliczają
-  // się do kworum głosowania.
-  const votingAttendees = attendees.filter((a) => a.role.canVote);
-  const quorumBase = votingAttendees.length;
-  const quorumPresent = votingAttendees.filter((a) => a.present).length;
   const quorumPct =
-    quorumBase > 0 ? Math.round((quorumPresent / quorumBase) * 100) : 0;
-  const quorumOk = quorumPct >= QUORUM_THRESHOLD;
+    attTotal > 0 ? Math.round((presentCount / attTotal) * 100) : 0;
+  // Gdy typ spotkania nie wymaga kworum, traktujemy je jako zawsze „spełnione”
+  // (nie blokuje głosowania).
+  const quorumOk = !requiresQuorum || quorumPct >= QUORUM_THRESHOLD;
 
   const agenda = meeting.agendaItems;
   const approvedCount = agenda.filter((a) => a.status === "APPROVED").length;
@@ -173,7 +179,7 @@ export default async function MeetingDetailPage({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">{MEETING_TYPE_LABELS[meeting.type]}</Badge>
+            <Badge variant="secondary">{meeting.meetingType.name}</Badge>
             {inProgress ? (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3 py-1 text-xs font-bold text-accent-foreground">
                 <span className="size-1.5 rounded-full bg-current" />
@@ -223,12 +229,12 @@ export default async function MeetingDetailPage({
             {isManager && !ended ? (
               <MeetingFormDialog
                 organizationId={orgId}
-                roles={roles}
+                meetingTypes={meetingTypes}
                 editAsButton
                 meeting={{
                   id: meeting.id,
                   title: meeting.title,
-                  type: meeting.type,
+                  meetingTypeId: meeting.meetingTypeId,
                   startsAtValue: toDateTimeLocalValue(meeting.startsAt),
                   isOnline: meeting.isOnline,
                   location: meeting.location ?? "",
@@ -237,7 +243,6 @@ export default async function MeetingDetailPage({
                     title: a.title,
                     votable: a.votable,
                   })),
-                  roleIds: allowedRoleIds,
                 }}
               />
             ) : null}
@@ -269,7 +274,11 @@ export default async function MeetingDetailPage({
             </div>
             <div className="mt-2 text-xs text-muted-foreground">obecnych członków</div>
           </div>
-          {attTotal > 0 ? (
+          {!requiresQuorum ? (
+            <span className="shrink-0 rounded-full bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground">
+              Bez kworum
+            </span>
+          ) : attTotal > 0 ? (
             <span
               className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
                 quorumOk
@@ -415,27 +424,29 @@ export default async function MeetingDetailPage({
             </span>
           </div>
 
-          {/* quorum bar */}
-          <div className="border-b px-5 py-4">
-            <div className="mb-2 flex items-center justify-between text-xs">
-              <span className="text-muted-foreground">Kworum ({quorumPct}%)</span>
-              <span
-                className={`font-semibold ${
-                  quorumOk ? "text-emerald-600" : "text-amber-600"
-                }`}
-              >
-                {quorumOk ? "Spełnione" : "Niespełnione"}
-              </span>
+          {/* quorum bar — tylko gdy typ spotkania wymaga kworum */}
+          {requiresQuorum ? (
+            <div className="border-b px-5 py-4">
+              <div className="mb-2 flex items-center justify-between text-xs">
+                <span className="text-muted-foreground">Kworum ({quorumPct}%)</span>
+                <span
+                  className={`font-semibold ${
+                    quorumOk ? "text-emerald-600" : "text-amber-600"
+                  }`}
+                >
+                  {quorumOk ? "Spełnione" : "Niespełnione"}
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+                <div
+                  className={`h-full rounded-full ${
+                    quorumOk ? "bg-emerald-600" : "bg-amber-500"
+                  }`}
+                  style={{ width: `${quorumPct}%` }}
+                />
+              </div>
             </div>
-            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-              <div
-                className={`h-full rounded-full ${
-                  quorumOk ? "bg-emerald-600" : "bg-amber-500"
-                }`}
-                style={{ width: `${quorumPct}%` }}
-              />
-            </div>
-          </div>
+          ) : null}
 
           {attendees.length === 0 ? (
             <p className="p-8 text-center text-sm text-muted-foreground">

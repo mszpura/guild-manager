@@ -213,17 +213,18 @@ export const applicationLinkSchema = z.object({
   required: z.boolean(),
 });
 
-// Walidacja formularza spotkania. Lista uprawnionych ról i punkty porządku obrad
-// parsowane osobno w akcji (formData.getAll) — to pola wielokrotne.
+// Walidacja formularza spotkania. Punkty porządku obrad parsowane osobno w akcji
+// (formData.getAll) — to pola wielokrotne. Role udziału wynikają z typu spotkania.
 export const meetingSchema = z.object({
   title: z
     .string()
     .trim()
     .min(2, "Tytuł musi mieć co najmniej 2 znaki.")
     .max(150, "Tytuł jest za długi."),
-  type: z.enum(["GENERAL_ASSEMBLY", "BOARD_MEETING"], {
-    message: "Wybierz typ spotkania.",
-  }),
+  meetingTypeId: z
+    .string()
+    .trim()
+    .min(1, "Wybierz typ spotkania."),
   startsAt: z.coerce
     .date({ message: "Podaj poprawną datę i godzinę spotkania." }),
   // Forma spotkania: online (link) albo stacjonarnie (adres).
@@ -233,6 +234,18 @@ export const meetingSchema = z.object({
     .trim()
     .max(300, "Miejsce spotkania jest za długie.")
     .transform((v) => (v === "" ? null : v)),
+});
+
+// Walidacja konfiguracji typu spotkania (panel ustawień). Role biorące udział
+// parsowane osobno w akcji (formData.getAll("roleIds")) — to pole wielokrotne.
+export const meetingTypeSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Nazwa musi mieć co najmniej 2 znaki.")
+    .max(100, "Nazwa jest za długa."),
+  // Pole z formularza (checkbox) — obecne = wymagane kworum.
+  requiresQuorum: z.preprocess((v) => v === "on" || v === true, z.boolean()),
 });
 
 // Pojedynczy punkt porządku obrad.

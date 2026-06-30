@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Pencil, X } from "lucide-react";
 import { createMeeting, updateMeeting } from "@/lib/actions/meetings";
-import { MEETING_TYPES, MEETING_TYPE_LABELS } from "@/lib/meetings";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
@@ -19,7 +18,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 
-type RoleOption = { id: string; name: string };
+type MeetingTypeOption = { id: string; name: string };
 
 // Punkt porządku obrad w formularzu. `id` puste = nowy punkt.
 type AgendaRow = { id: string; title: string; votable: boolean };
@@ -27,22 +26,21 @@ type AgendaRow = { id: string; title: string; votable: boolean };
 export type MeetingFormValues = {
   id: string;
   title: string;
-  type: string;
+  meetingTypeId: string;
   startsAtValue: string; // „RRRR-MM-DDTHH:mm” dla input[type=datetime-local]
   isOnline: boolean;
   location: string;
   agendaItems: AgendaRow[];
-  roleIds: string[];
 };
 
 export function MeetingFormDialog({
   organizationId,
-  roles,
+  meetingTypes,
   meeting,
   editAsButton,
 }: {
   organizationId: string;
-  roles: RoleOption[];
+  meetingTypes: MeetingTypeOption[];
   meeting?: MeetingFormValues;
   // W trybie edycji: zwykły przycisk z etykietą zamiast ikony (domyślnie ikona).
   editAsButton?: boolean;
@@ -125,7 +123,7 @@ export function MeetingFormDialog({
             {meeting ? "Edytuj spotkanie" : "Nowe spotkanie"}
           </DialogTitle>
           <DialogDescription>
-            Ustal termin, typ i kto może wziąć udział.
+            Ustal typ, termin i porządek obrad spotkania.
           </DialogDescription>
         </DialogHeader>
 
@@ -145,13 +143,13 @@ export function MeetingFormDialog({
             <label className="flex flex-col gap-1 text-sm">
               <span className="font-medium">Typ spotkania</span>
               <select
-                name="type"
-                defaultValue={meeting?.type ?? MEETING_TYPES[0]}
+                name="meetingTypeId"
+                defaultValue={meeting?.meetingTypeId ?? meetingTypes[0]?.id}
                 className="h-9 rounded-md border bg-transparent px-2 text-sm"
               >
-                {MEETING_TYPES.map((t) => (
-                  <option key={t} value={t}>
-                    {MEETING_TYPE_LABELS[t]}
+                {meetingTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
                   </option>
                 ))}
               </select>
@@ -262,32 +260,10 @@ export function MeetingFormDialog({
             </Button>
           </fieldset>
 
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">
-              Role uprawnione do udziału
-            </legend>
-            <p className="text-xs text-muted-foreground">
-              Nie zaznaczaj żadnej roli, aby spotkanie było widoczne dla
-              wszystkich członków.
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {roles.map((r) => (
-                <label
-                  key={r.id}
-                  className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm"
-                >
-                  <input
-                    type="checkbox"
-                    name="roleIds"
-                    value={r.id}
-                    defaultChecked={meeting?.roleIds.includes(r.id)}
-                    className="size-4 rounded border-input"
-                  />
-                  {r.name}
-                </label>
-              ))}
-            </div>
-          </fieldset>
+          <p className="text-xs text-muted-foreground">
+            Role uprawnione do udziału i wymóg kworum wynikają z wybranego typu
+            spotkania — skonfigurujesz je w Ustawieniach → Spotkania.
+          </p>
 
           {error ? <FieldError>{error}</FieldError> : null}
 

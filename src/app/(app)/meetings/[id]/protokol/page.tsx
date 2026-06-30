@@ -1,11 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
-import {
-  MEETING_TYPE_LABELS,
-  QUORUM_THRESHOLD,
-  hasQuorum,
-} from "@/lib/meetings";
+import { QUORUM_THRESHOLD, hasQuorum } from "@/lib/meetings";
 import { ProtocolPrintBar } from "@/components/protocol-print-bar";
 import { OrgDocumentIdentity } from "@/components/org-document-identity";
 
@@ -40,7 +36,13 @@ export default async function MeetingProtocolPage({
     select: {
       id: true,
       title: true,
-      type: true,
+      meetingType: {
+        select: {
+          name: true,
+          requiresQuorum: true,
+          roles: { select: { roleId: true } },
+        },
+      },
       startsAt: true,
       endedAt: true,
       location: true,
@@ -57,7 +59,6 @@ export default async function MeetingProtocolPage({
           logoUrl: true,
         },
       },
-      allowedRoles: { select: { role: { select: { id: true } } } },
       agendaItems: {
         orderBy: { order: "asc" },
         select: {
@@ -77,10 +78,14 @@ export default async function MeetingProtocolPage({
   // Protokół dostępny wyłącznie po zakończeniu spotkania.
   if (meeting.endedAt === null) redirect(`/meetings/${id}`);
 
-  const allowedRoleIds = meeting.allowedRoles.map((r) => r.role.id);
+  // Lista obecności obejmuje wyłącznie członków liczących się do kworum (role z
+  // prawem głosu); pozostali nie są wymagani i nie figurują na liście.
+  const allowedRoleIds = meeting.meetingType.roles.map((r) => r.roleId);
+  const requiresQuorum = meeting.meetingType.requiresQuorum;
   const members = await prisma.member.findMany({
     where: {
       organizationId: orgId,
+      role: { is: { canVote: true } },
       ...(allowedRoleIds.length ? { roleId: { in: allowedRoleIds } } : {}),
     },
     orderBy: [
@@ -119,7 +124,7 @@ export default async function MeetingProtocolPage({
             Protokół
           </h1>
           <div className="mt-1 text-sm text-muted-foreground">
-            {MEETING_TYPE_LABELS[meeting.type]}
+            {meeting.meetingType.name}
           </div>
           <div className="mt-2 text-base font-bold">{meeting.title}</div>
         </header>
@@ -139,9 +144,11 @@ export default async function MeetingProtocolPage({
             Obecnych {presentCount} z {attTotal} uprawnionych do udziału (
             {quorumPct}%).{" "}
             <strong>
-              {quorumOk
-                ? `Kworum spełnione (próg ${QUORUM_THRESHOLD}%).`
-                : `Kworum niespełnione (próg ${QUORUM_THRESHOLD}%).`}
+              {!requiresQuorum
+                ? "Dla tego typu spotkania kworum nie jest wymagane."
+                : quorumOk
+                  ? `Kworum spełnione (próg ${QUORUM_THRESHOLD}%).`
+                  : `Kworum niespełnione (próg ${QUORUM_THRESHOLD}%).`}
             </strong>
           </p>
         </section>

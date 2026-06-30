@@ -25,30 +25,23 @@ function revalidateMeeting(meetingId?: string) {
   if (meetingId) revalidatePath(`/meetings/${meetingId}`);
 }
 
-// Wyciąga z formularza prawidłowe id ról należących do stowarzyszenia.
-// Pole `roleIds` (wielokrotne, checkboxy). Pusta lista = otwarte dla wszystkich.
-async function parseAllowedRoleIds(
+// Sprawdza, że wskazany typ spotkania należy do stowarzyszenia.
+async function meetingTypeBelongsToOrg(
   organizationId: string,
-  formData: FormData,
-): Promise<string[]> {
-  const submitted = formData
-    .getAll("roleIds")
-    .map(String)
-    .filter(Boolean);
-  if (submitted.length === 0) return [];
-
-  const roles = await prisma.role.findMany({
-    where: { organizationId, id: { in: submitted } },
+  meetingTypeId: string,
+): Promise<boolean> {
+  const type = await prisma.meetingType.findFirst({
+    where: { id: meetingTypeId, organizationId },
     select: { id: true },
   });
-  return roles.map((r) => r.id);
+  return type !== null;
 }
 
 // Waliduje wspólne pola spotkania (tytuł, typ, termin, forma + miejsce).
 function parseMeetingFields(formData: FormData) {
   return meetingSchema.safeParse({
     title: formData.get("title"),
-    type: formData.get("type"),
+    meetingTypeId: formData.get("meetingTypeId"),
     startsAt: formData.get("startsAt"),
     isOnline: formData.get("locationMode") === "online",
     location: formData.get("location") ?? "",
@@ -98,19 +91,20 @@ export async function createMeeting(
   const agenda = parseAgenda(formData);
   if (!agenda.ok) return { error: agenda.error };
 
-  const roleIds = await parseAllowedRoleIds(organizationId, formData);
+  if (!(await meetingTypeBelongsToOrg(organizationId, result.data.meetingTypeId))) {
+    return { error: "Wybierz prawidłowy typ spotkania." };
+  }
 
   await prisma.meeting.create({
     data: {
       organizationId,
       title: result.data.title,
-      type: result.data.type,
+      meetingTypeId: result.data.meetingTypeId,
       startsAt: result.data.startsAt,
       isOnline: result.data.isOnline,
       location: result.data.location,
       // Organizatorem jest członek, który zwołał spotkanie.
       createdById: me.id,
-      allowedRoles: { create: roleIds.map((roleId) => ({ roleId })) },
       agendaItems: {
         create: agenda.items.map((it, i) => ({
           order: i,
@@ -125,7 +119,7 @@ export async function createMeeting(
   return { ok: true };
 }
 
-// Aktualizuje spotkanie (dane, role, porządek obrad). Wymaga MEETINGS WRITE.
+// Aktualizuje spotkanie (dane, porządek obrad). Wymaga MEETINGS WRITE.
 // Punkty porządku godzimy po id — status istniejących punktów zostaje zachowany.
 export async function updateMeeting(
   meetingId: string,
@@ -152,7 +146,14 @@ export async function updateMeeting(
   const agenda = parseAgenda(formData);
   if (!agenda.ok) return { error: agenda.error };
 
-  const roleIds = await parseAllowedRoleIds(meeting.organizationId, formData);
+  if (
+    !(await meetingTypeBelongsToOrg(
+      meeting.organizationId,
+      result.data.meetingTypeId,
+    ))
+  ) {
+    return { error: "Wybierz prawidłowy typ spotkania." };
+  }
 
   // Istniejące punkty tego spotkania — tylko ich id wolno aktualizować.
   const existing = await prisma.agendaItem.findMany({
@@ -176,19 +177,15 @@ export async function updateMeeting(
   const keptIds = new Set(updateOps.map((op) => op.where.id));
   const toDelete = [...existingIds].filter((id) => !keptIds.has(id));
 
-  // Listę ról zastępujemy w całości; porządek obrad godzimy po id.
+  // Porządek obrad godzimy po id; role udziału wynikają z typu spotkania.
   await prisma.meeting.update({
     where: { id: meetingId },
     data: {
       title: result.data.title,
-      type: result.data.type,
+      meetingTypeId: result.data.meetingTypeId,
       startsAt: result.data.startsAt,
       isOnline: result.data.isOnline,
       location: result.data.location,
-      allowedRoles: {
-        deleteMany: {},
-        create: roleIds.map((roleId) => ({ roleId })),
-      },
       agendaItems: {
         deleteMany: { id: { in: toDelete } },
         update: updateOps,
@@ -383,7 +380,12 @@ export async function castVote(itemId: string, choice: VoteChoice) {
         select: {
           organizationId: true,
           endedAt: true,
-          allowedRoles: { select: { roleId: true } },
+          meetingType: {
+            select: {
+              requiresQuorum: true,
+              roles: { select: { roleId: true } },
+            },
+          },
         },
       },
     },
@@ -409,26 +411,29 @@ export async function castVote(itemId: string, choice: VoteChoice) {
   if (!me.role.canVote) {
     throw new Error("Twoja rola nie ma prawa głosu.");
   }
-  const allowed = item.meeting.allowedRoles.map((r) => r.roleId);
+  const allowed = item.meeting.meetingType.roles.map((r) => r.roleId);
   if (allowed.length > 0 && !allowed.includes(me.roleId)) {
     throw new Error("Nie masz prawa głosu w tym spotkaniu.");
   }
 
-  // Bez kworum głosowanie jest wstrzymane. Kworum liczymy tylko z członków o rolach
-  // z prawem głosu (spójnie z widokiem spotkania i §17 ust. 3 statutu).
-  const memberWhere: Prisma.MemberWhereInput = {
-    organizationId: item.meeting.organizationId,
-    role: { is: { canVote: true } },
-    ...(allowed.length > 0 ? { roleId: { in: allowed } } : {}),
-  };
-  const [eligibleTotal, presentCount] = await Promise.all([
-    prisma.member.count({ where: memberWhere }),
-    prisma.meetingAttendance.count({
-      where: { meetingId: item.meetingId, present: true, member: memberWhere },
-    }),
-  ]);
-  if (!hasQuorum(presentCount, eligibleTotal)) {
-    throw new Error("Brak kworum — głosowanie jest wstrzymane.");
+  // Gdy typ spotkania wymaga kworum, bez niego głosowanie jest wstrzymane. Kworum
+  // liczymy tylko z członków o rolach z prawem głosu (spójnie z widokiem spotkania
+  // i §17 ust. 3 statutu).
+  if (item.meeting.meetingType.requiresQuorum) {
+    const memberWhere: Prisma.MemberWhereInput = {
+      organizationId: item.meeting.organizationId,
+      role: { is: { canVote: true } },
+      ...(allowed.length > 0 ? { roleId: { in: allowed } } : {}),
+    };
+    const [eligibleTotal, presentCount] = await Promise.all([
+      prisma.member.count({ where: memberWhere }),
+      prisma.meetingAttendance.count({
+        where: { meetingId: item.meetingId, present: true, member: memberWhere },
+      }),
+    ]);
+    if (!hasQuorum(presentCount, eligibleTotal)) {
+      throw new Error("Brak kworum — głosowanie jest wstrzymane.");
+    }
   }
 
   const existing = await prisma.agendaVote.findUnique({

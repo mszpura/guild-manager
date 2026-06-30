@@ -5,6 +5,7 @@ import { ApplicationFieldsManager } from "@/components/application-fields-manage
 import { FormFieldSettings } from "@/components/form-field-settings";
 import { PaymentSettings } from "@/components/payment-settings";
 import { RolesManager } from "@/components/roles-manager";
+import { MeetingTypesManager } from "@/components/meeting-types-manager";
 import { OrgDetailsForm } from "@/components/org-details-form";
 import {
   Card,
@@ -30,7 +31,7 @@ export default async function SettingsPage() {
   const orgId = data.active.organizationId;
   await requireMember(orgId, "SETTINGS", "WRITE");
 
-  const [fields, org, roles] = await Promise.all([
+  const [fields, org, roles, meetingTypes] = await Promise.all([
     prisma.applicationField.findMany({
       where: { organizationId: orgId },
       orderBy: { order: "asc" },
@@ -75,6 +76,17 @@ export default async function SettingsPage() {
         _count: { select: { members: true } },
       },
     }),
+    prisma.meetingType.findMany({
+      where: { organizationId: orgId },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        requiresQuorum: true,
+        roles: { select: { roleId: true } },
+        _count: { select: { meetings: true } },
+      },
+    }),
   ]);
 
   return (
@@ -96,6 +108,7 @@ export default async function SettingsPage() {
             ["roles", "Role"],
             ["form", "Formularz"],
             ["payments", "Składki"],
+            ["meetings", "Spotkania"],
           ].map(([value, label]) => (
             <TabsTrigger
               key={value}
@@ -221,6 +234,20 @@ export default async function SettingsPage() {
               canVote: r.canVote,
               memberCount: r._count.members,
             }))}
+          />
+        </TabsContent>
+
+        <TabsContent value="meetings">
+          <MeetingTypesManager
+            organizationId={orgId}
+            meetingTypes={meetingTypes.map((t) => ({
+              id: t.id,
+              name: t.name,
+              requiresQuorum: t.requiresQuorum,
+              roleIds: t.roles.map((r) => r.roleId),
+              meetingCount: t._count.meetings,
+            }))}
+            roles={roles.map((r) => ({ id: r.id, name: r.name }))}
           />
         </TabsContent>
       </Tabs>

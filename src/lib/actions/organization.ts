@@ -209,6 +209,33 @@ export async function createOrganization(
         },
       ],
     });
+    // Dwa domyślne typy spotkań (edytowalne w ustawieniach):
+    //  • Walne zebranie — wszyscy członkowie (brak ról = otwarte), kworum wymagane;
+    //  • Posiedzenie zarządu — bez Juniorów i zwykłych Członków, kworum wymagane.
+    await tx.meetingType.create({
+      data: {
+        organizationId: org.id,
+        name: "Walne zebranie",
+        requiresQuorum: true,
+        order: 0,
+      },
+    });
+    const boardRoles = await tx.role.findMany({
+      where: {
+        organizationId: org.id,
+        name: { notIn: ["Junior", "Członek"] },
+      },
+      select: { id: true },
+    });
+    await tx.meetingType.create({
+      data: {
+        organizationId: org.id,
+        name: "Posiedzenie zarządu",
+        requiresQuorum: true,
+        order: 1,
+        roles: { create: boardRoles.map((r) => ({ roleId: r.id })) },
+      },
+    });
     // Twórca staje się członkiem z rolą Prezes (pojawia się na liście członków).
     await tx.member.create({
       data: {
