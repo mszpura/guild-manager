@@ -58,7 +58,7 @@ export function OrgSwitcher({
               {orgInitial}
             </span>
           )}
-          <span className="max-w-44 truncate text-sm font-semibold text-foreground">
+          <span className="text-sm font-semibold text-foreground">
             {orgName}
           </span>
           <ChevronsUpDown className="size-3.5 text-muted-foreground" />
