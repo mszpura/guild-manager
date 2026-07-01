@@ -27,15 +27,26 @@ export type ResolutionFormValues = {
   title: string;
   content: string;
   secretBallot: boolean;
+  resolutionTypeId: string | null;
+};
+
+export type ResolutionTypeOption = {
+  id: string;
+  name: string;
+  voteThreshold: number;
+  requiresMeeting: boolean;
 };
 
 export function ResolutionFormDialog({
   organizationId,
   resolution,
+  resolutionTypes,
   triggerLabel,
 }: {
   organizationId: string;
   resolution?: ResolutionFormValues;
+  // Typy uchwał do wyboru (z ustawień). Pusta lista = brak skonfigurowanych typów.
+  resolutionTypes: ResolutionTypeOption[];
   // Etykieta przycisku wyzwalającego (domyślnie „Nowa uchwała" / „Edytuj").
   triggerLabel?: string;
 }) {
@@ -110,6 +121,27 @@ export function ResolutionFormDialog({
               required
             />
           </Field>
+
+          {resolutionTypes.length > 0 ? (
+            <Field>
+              <FieldLabel htmlFor="resolutionTypeId">Typ uchwały</FieldLabel>
+              <select
+                id="resolutionTypeId"
+                name="resolutionTypeId"
+                defaultValue={
+                  resolution?.resolutionTypeId ?? resolutionTypes[0].id
+                }
+                className="h-9 rounded-md border bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                {resolutionTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} — próg {t.voteThreshold}%
+                    {t.requiresMeeting ? " · głosowanie na spotkaniu" : ""}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
 
           <Field>
             <FieldLabel htmlFor="content">Treść uchwały</FieldLabel>

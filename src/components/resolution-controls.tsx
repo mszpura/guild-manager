@@ -175,11 +175,14 @@ export function ResolutionStatusControls({
   resolutionId,
   status,
   hasSignatures,
+  votingDisabled,
 }: {
   resolutionId: string;
   status: Status;
   // Podpisana uchwała jest zamknięta — nie udostępniamy cofnięcia do szkicu.
   hasSignatures?: boolean;
+  // Typ uchwały wymaga głosowania na spotkaniu — głosowanie online wyłączone.
+  votingDisabled?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -197,6 +200,8 @@ export function ResolutionStatusControls({
   }
 
   if (status === "DRAFT") {
+    // Typ wymagający głosowania na spotkaniu nie udostępnia otwarcia głosowania online.
+    if (votingDisabled) return null;
     return (
       <Button
         type="button"

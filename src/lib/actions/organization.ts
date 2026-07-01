@@ -236,6 +236,17 @@ export async function createOrganization(
         roles: { create: boardRoles.map((r) => ({ roleId: r.id })) },
       },
     });
+    // Domyślny typ uchwały (edytowalny w ustawieniach): zwykła uchwała,
+    // 50% głosów „za", bez wymogu głosowania na spotkaniu.
+    await tx.resolutionType.create({
+      data: {
+        organizationId: org.id,
+        name: "Uchwała standardowa",
+        voteThreshold: 50,
+        requiresMeeting: false,
+        order: 0,
+      },
+    });
     // Twórca staje się członkiem z rolą Prezes (pojawia się na liście członków).
     await tx.member.create({
       data: {

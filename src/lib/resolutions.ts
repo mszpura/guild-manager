@@ -39,9 +39,20 @@ export function tallyVotes(votes: { choice: VoteChoice }[]): VoteTally {
   };
 }
 
-// Wynik głosowania: przyjęta, gdy „za" przeważa nad „przeciw" (remis = odrzucona).
-export function voteOutcome(tally: VoteTally): "PASSED" | "REJECTED" {
-  return tally.FOR > tally.AGAINST ? "PASSED" : "REJECTED";
+// Wynik głosowania względem progu typu uchwały. Z progiem (procent głosów „za"
+// wśród oddanych) uchwała przechodzi, gdy udział „za" osiąga próg. Bez typu/progu
+// (uchwały sprzed wprowadzenia typów) stosujemy zwykłą większość (remis = odrzucona).
+export function voteOutcome(
+  tally: VoteTally,
+  threshold?: number | null,
+): "PASSED" | "REJECTED" {
+  if (threshold == null) {
+    return tally.FOR > tally.AGAINST ? "PASSED" : "REJECTED";
+  }
+  const cast = tally.FOR + tally.AGAINST + tally.ABSTAIN;
+  if (cast === 0) return "REJECTED";
+  // Porównanie na liczbach całkowitych (bez błędów zaokrąglenia ułamków).
+  return tally.FOR * 100 >= threshold * cast ? "PASSED" : "REJECTED";
 }
 
 // Skrót tekstowy wyniku, np. „24 za · 3 przeciw · 1 wstrz.".

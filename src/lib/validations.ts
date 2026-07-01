@@ -248,6 +248,25 @@ export const meetingTypeSchema = z.object({
   requiresQuorum: z.preprocess((v) => v === "on" || v === true, z.boolean()),
 });
 
+// Walidacja konfiguracji typu uchwały (panel ustawień): nazwa, procentowy próg
+// głosów wymagany do przyjęcia oraz wymóg głosowania na spotkaniu (checkbox).
+export const resolutionTypeSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, "Nazwa musi mieć co najmniej 2 znaki.")
+    .max(100, "Nazwa jest za długa."),
+  voteThreshold: z
+    .string()
+    .trim()
+    .refine((v) => v !== "", "Podaj wymagany próg głosów.")
+    .refine((v) => /^\d{1,3}$/.test(v), "Próg w procentach (liczba 1–100).")
+    .transform((v) => Number(v))
+    .refine((v) => v >= 1 && v <= 100, "Próg musi mieścić się w zakresie 1–100%."),
+  // Pole z formularza (checkbox) — obecne = wymaga głosowania na spotkaniu.
+  requiresMeeting: z.preprocess((v) => v === "on" || v === true, z.boolean()),
+});
+
 // Pojedynczy punkt porządku obrad.
 export const agendaItemSchema = z
   .string()
@@ -273,6 +292,11 @@ export const resolutionSchema = z.object({
     .transform((v) => (v === "" ? null : v)),
   // Pole z formularza: "secret" → głosowanie tajne, inaczej jawne.
   secretBallot: z.preprocess((v) => v === "secret", z.boolean()),
+  // Wybrany typ uchwały (puste → brak typu, zachowanie domyślne).
+  resolutionTypeId: z
+    .string()
+    .trim()
+    .transform((v) => (v === "" ? null : v)),
 });
 
 // Komentarz do punktu porządku obrad.

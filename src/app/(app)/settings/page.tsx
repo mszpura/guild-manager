@@ -6,6 +6,7 @@ import { FormFieldSettings } from "@/components/form-field-settings";
 import { PaymentSettings } from "@/components/payment-settings";
 import { RolesManager } from "@/components/roles-manager";
 import { MeetingTypesManager } from "@/components/meeting-types-manager";
+import { ResolutionTypesManager } from "@/components/resolution-types-manager";
 import { OrgDetailsForm } from "@/components/org-details-form";
 import {
   Card,
@@ -31,7 +32,7 @@ export default async function SettingsPage() {
   const orgId = data.active.organizationId;
   await requireMember(orgId, "SETTINGS", "WRITE");
 
-  const [fields, org, roles, meetingTypes] = await Promise.all([
+  const [fields, org, roles, meetingTypes, resolutionTypes] = await Promise.all([
     prisma.applicationField.findMany({
       where: { organizationId: orgId },
       orderBy: { order: "asc" },
@@ -87,6 +88,17 @@ export default async function SettingsPage() {
         _count: { select: { meetings: true } },
       },
     }),
+    prisma.resolutionType.findMany({
+      where: { organizationId: orgId },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        voteThreshold: true,
+        requiresMeeting: true,
+        _count: { select: { resolutions: true } },
+      },
+    }),
   ]);
 
   return (
@@ -109,6 +121,7 @@ export default async function SettingsPage() {
             ["form", "Formularz"],
             ["payments", "Składki"],
             ["meetings", "Spotkania"],
+            ["resolutions", "Uchwały"],
           ].map(([value, label]) => (
             <TabsTrigger
               key={value}
@@ -248,6 +261,19 @@ export default async function SettingsPage() {
               meetingCount: t._count.meetings,
             }))}
             roles={roles.map((r) => ({ id: r.id, name: r.name }))}
+          />
+        </TabsContent>
+
+        <TabsContent value="resolutions">
+          <ResolutionTypesManager
+            organizationId={orgId}
+            resolutionTypes={resolutionTypes.map((t) => ({
+              id: t.id,
+              name: t.name,
+              voteThreshold: t.voteThreshold,
+              requiresMeeting: t.requiresMeeting,
+              resolutionCount: t._count.resolutions,
+            }))}
           />
         </TabsContent>
       </Tabs>

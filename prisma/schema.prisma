@@ -123,6 +123,7 @@ model Organization {
   meetings          Meeting[]
   meetingTypes      MeetingType[]
   resolutions       Resolution[]
+  resolutionTypes   ResolutionType[]
 }
 
 // Rola w stowarzyszeniu (konfigurowalna) + macierz uprawnień (JSON: obszar → poziom).
@@ -480,6 +481,12 @@ model Resolution {
   title   String
   content String? // treść uchwały
 
+  // Typ uchwały (próg głosów wymagany do przyjęcia, wymóg głosowania na spotkaniu).
+  // Nullable, by nie psuć uchwał sprzed wprowadzenia typów; SetNull przy usunięciu
+  // typu — uchwała wraca wówczas do zachowania domyślnego (zwykła większość).
+  resolutionType   ResolutionType? @relation(fields: [resolutionTypeId], references: [id], onDelete: SetNull)
+  resolutionTypeId String?
+
   // Tryb głosowania: jawne (widać, kto jak głosował) lub tajne.
   secretBallot Boolean @default(false)
 
@@ -494,6 +501,30 @@ model Resolution {
   updatedAt DateTime @updatedAt
 
   @@unique([organizationId, number])
+  @@index([organizationId])
+  @@index([resolutionTypeId])
+}
+
+// Konfigurowalny typ uchwały (per stowarzyszenie). Określa procentowy próg głosów
+// „za" wymagany do przyjęcia oraz to, czy do głosowania potrzebne jest głosowanie
+// na spotkaniu. Gdy requiresMeeting = true, głosowanie online w szczegółach uchwały
+// jest na razie wyłączone (do czasu wsparcia głosowania na spotkaniu).
+model ResolutionType {
+  id             String       @id @default(cuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  name            String
+  // Procentowy próg głosów „za" wymagany do przyjęcia uchwały (1–100).
+  voteThreshold   Int     @default(50)
+  // Czy do głosowania wymagane jest głosowanie na spotkaniu.
+  requiresMeeting Boolean @default(false)
+  order           Int     @default(0) // kolejność na liście/typach do wyboru
+  createdAt       DateTime @default(now())
+
+  resolutions Resolution[]
+
+  @@unique([organizationId, name])
   @@index([organizationId])
 }
 

@@ -38,7 +38,7 @@ export default async function ResolutionDetailPage({
   const me = await requireMember(orgId, "RESOLUTIONS", "READ");
   const isManager = can(me.role, "RESOLUTIONS", "WRITE");
 
-  const [resolution, voters] = await Promise.all([
+  const [resolution, voters, resolutionTypes] = await Promise.all([
     prisma.resolution.findFirst({
       where: { id, organizationId: orgId },
       select: {
@@ -50,6 +50,10 @@ export default async function ResolutionDetailPage({
         secretBallot: true,
         openedAt: true,
         decidedAt: true,
+        resolutionTypeId: true,
+        resolutionType: {
+          select: { name: true, voteThreshold: true, requiresMeeting: true },
+        },
         votes: {
           orderBy: { createdAt: "asc" },
           select: {
@@ -75,6 +79,16 @@ export default async function ResolutionDetailPage({
         role: { select: { isOwner: true, permissions: true, canVote: true } },
       },
       orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
+    }),
+    prisma.resolutionType.findMany({
+      where: { organizationId: orgId },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        voteThreshold: true,
+        requiresMeeting: true,
+      },
     }),
   ]);
   if (!resolution) notFound();
@@ -103,6 +117,8 @@ export default async function ResolutionDetailPage({
   const canDownloadPdf = isDecided;
   // Imienne głosy ujawniamy tylko przy głosowaniu jawnym.
   const showVoters = !resolution.secretBallot;
+  // Typ wymagający głosowania na spotkaniu — głosowanie online na razie wyłączone.
+  const requiresMeeting = resolution.resolutionType?.requiresMeeting ?? false;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -132,6 +148,12 @@ export default async function ResolutionDetailPage({
                 ? "Głosowanie tajne"
                 : "Głosowanie jawne"}
             </span>
+            {resolution.resolutionType ? (
+              <span className="rounded-full border px-2.5 py-1 text-[11px] font-semibold text-muted-foreground">
+                {resolution.resolutionType.name} · próg{" "}
+                {resolution.resolutionType.voteThreshold}%
+              </span>
+            ) : null}
           </div>
           <h1 className="font-heading text-2xl font-extrabold tracking-tight">
             {resolution.title}
@@ -159,12 +181,14 @@ export default async function ResolutionDetailPage({
             {isDraft ? (
               <ResolutionFormDialog
                 organizationId={orgId}
+                resolutionTypes={resolutionTypes}
                 resolution={{
                   id: resolution.id,
                   number: resolution.number,
                   title: resolution.title,
                   content: resolution.content ?? "",
                   secretBallot: resolution.secretBallot,
+                  resolutionTypeId: resolution.resolutionTypeId,
                 }}
               />
             ) : null}
@@ -172,6 +196,7 @@ export default async function ResolutionDetailPage({
               resolutionId={resolution.id}
               status={resolution.status}
               hasSignatures={resolution.signatures.length > 0}
+              votingDisabled={requiresMeeting}
             />
             <ResolutionDeleteButton
               resolutionId={resolution.id}
@@ -199,13 +224,20 @@ export default async function ResolutionDetailPage({
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-heading text-base font-bold">Głosowanie</h2>
           <span className="text-xs text-muted-foreground">
-            {isDraft
-              ? "Nieotwarte"
-              : `${castCount} z ${eligibleCount} głosów`}
+            {requiresMeeting
+              ? "Na spotkaniu"
+              : isDraft
+                ? "Nieotwarte"
+                : `${castCount} z ${eligibleCount} głosów`}
           </span>
         </div>
 
-        {isDraft ? (
+        {requiresMeeting ? (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            Ten typ uchwały wymaga głosowania na spotkaniu. Głosowanie online jest
+            na razie niedostępne.
+          </p>
+        ) : isDraft ? (
           <p className="text-sm text-muted-foreground">
             Głosowanie nie zostało jeszcze otwarte.
             {isManager ? " Użyj „Otwórz głosowanie”, aby rozpocząć." : ""}

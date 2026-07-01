@@ -58,7 +58,7 @@ export default async function ResolutionsPage({
       : {}),
   };
 
-  const [rows, memberCount, counts] = await Promise.all([
+  const [rows, memberCount, counts, resolutionTypes] = await Promise.all([
     prisma.resolution.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -77,6 +77,16 @@ export default async function ResolutionsPage({
       by: ["status"],
       where: { organizationId: orgId },
       _count: true,
+    }),
+    prisma.resolutionType.findMany({
+      where: { organizationId: orgId },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        voteThreshold: true,
+        requiresMeeting: true,
+      },
     }),
   ]);
 
@@ -120,7 +130,12 @@ export default async function ResolutionsPage({
               className="h-9 w-56 rounded-md border bg-transparent px-3 text-sm outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
             />
           </form>
-          {isManager ? <ResolutionFormDialog organizationId={orgId} /> : null}
+          {isManager ? (
+            <ResolutionFormDialog
+              organizationId={orgId}
+              resolutionTypes={resolutionTypes}
+            />
+          ) : null}
         </div>
       </div>
 

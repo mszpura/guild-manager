@@ -24,7 +24,22 @@ function parseFields(formData: FormData) {
     title: formData.get("title"),
     content: formData.get("content") ?? "",
     secretBallot: formData.get("ballot") ?? "open",
+    resolutionTypeId: formData.get("resolutionTypeId") ?? "",
   });
+}
+
+// Sprawdza, że wybrany typ uchwały należy do stowarzyszenia. Zwraca jego id albo
+// null (brak wyboru). Rzuca, gdy podano obcy/nieistniejący typ.
+async function resolveTypeId(
+  organizationId: string,
+  resolutionTypeId: string | null,
+): Promise<string | null> {
+  if (!resolutionTypeId) return null;
+  const type = await prisma.resolutionType.findFirst({
+    where: { id: resolutionTypeId, organizationId },
+    select: { id: true },
+  });
+  return type?.id ?? null;
 }
 
 // Tworzy uchwałę (w stanie Szkic). Wymaga RESOLUTIONS WRITE.
@@ -40,6 +55,11 @@ export async function createResolution(
     return { error: result.error.issues[0]?.message ?? "Nieprawidłowe dane." };
   }
 
+  const resolutionTypeId = await resolveTypeId(
+    organizationId,
+    result.data.resolutionTypeId,
+  );
+
   try {
     await prisma.resolution.create({
       data: {
@@ -48,6 +68,7 @@ export async function createResolution(
         title: result.data.title,
         content: result.data.content,
         secretBallot: result.data.secretBallot,
+        resolutionTypeId,
       },
     });
   } catch (e) {
@@ -84,6 +105,11 @@ export async function updateResolution(
     return { error: result.error.issues[0]?.message ?? "Nieprawidłowe dane." };
   }
 
+  const resolutionTypeId = await resolveTypeId(
+    resolution.organizationId,
+    result.data.resolutionTypeId,
+  );
+
   try {
     await prisma.resolution.update({
       where: { id: resolutionId },
@@ -92,6 +118,7 @@ export async function updateResolution(
         title: result.data.title,
         content: result.data.content,
         secretBallot: result.data.secretBallot,
+        resolutionTypeId,
       },
     });
   } catch (e) {
@@ -123,7 +150,11 @@ export async function deleteResolution(resolutionId: string) {
 export async function openResolutionVoting(resolutionId: string) {
   const resolution = await prisma.resolution.findUnique({
     where: { id: resolutionId },
-    select: { organizationId: true, status: true },
+    select: {
+      organizationId: true,
+      status: true,
+      resolutionType: { select: { requiresMeeting: true } },
+    },
   });
   if (!resolution) throw new Error("Uchwała nie istnieje.");
 
@@ -131,6 +162,13 @@ export async function openResolutionVoting(resolutionId: string) {
 
   if (resolution.status !== "DRAFT") {
     throw new Error("Głosowanie można otworzyć tylko dla szkicu.");
+  }
+
+  // Typ wymagający głosowania na spotkaniu nie obsługuje na razie głosowania online.
+  if (resolution.resolutionType?.requiresMeeting) {
+    throw new Error(
+      "Ten typ uchwały wymaga głosowania na spotkaniu — głosowanie online jest wyłączone.",
+    );
   }
 
   await prisma.resolution.update({
@@ -148,6 +186,7 @@ export async function closeResolutionVoting(resolutionId: string) {
       organizationId: true,
       status: true,
       votes: { select: { choice: true } },
+      resolutionType: { select: { voteThreshold: true } },
     },
   });
   if (!resolution) throw new Error("Uchwała nie istnieje.");
@@ -158,7 +197,11 @@ export async function closeResolutionVoting(resolutionId: string) {
     throw new Error("Zamknąć można tylko trwające głosowanie.");
   }
 
-  const outcome = voteOutcome(tallyVotes(resolution.votes));
+  // Próg z typu uchwały (brak typu → zwykła większość).
+  const outcome = voteOutcome(
+    tallyVotes(resolution.votes),
+    resolution.resolutionType?.voteThreshold ?? null,
+  );
   await prisma.resolution.update({
     where: { id: resolutionId },
     data: { status: outcome, decidedAt: new Date() },
@@ -205,7 +248,11 @@ export async function castResolutionVote(
 ) {
   const resolution = await prisma.resolution.findUnique({
     where: { id: resolutionId },
-    select: { organizationId: true, status: true },
+    select: {
+      organizationId: true,
+      status: true,
+      resolutionType: { select: { requiresMeeting: true } },
+    },
   });
   if (!resolution) throw new Error("Uchwała nie istnieje.");
 
@@ -213,6 +260,13 @@ export async function castResolutionVote(
 
   if (!me.role.canVote) {
     throw new Error("Twoja rola nie ma prawa głosu.");
+  }
+
+  // Typ wymagający głosowania na spotkaniu nie obsługuje na razie głosowania online.
+  if (resolution.resolutionType?.requiresMeeting) {
+    throw new Error(
+      "Ten typ uchwały wymaga głosowania na spotkaniu — głosowanie online jest wyłączone.",
+    );
   }
 
   if (resolution.status !== "VOTING") {
