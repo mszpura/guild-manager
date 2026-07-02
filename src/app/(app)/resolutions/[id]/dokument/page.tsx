@@ -106,10 +106,13 @@ export default async function ResolutionDocumentPage({
         },
       },
     }),
-    // Uprawnieni do głosowania = członkowie z dostępem WRITE do Uchwał (frekwencja).
+    // Uprawnieni do głosowania = członkowie z dostępem do Uchwał (co najmniej
+    // odczyt — READ lub WRITE) i rolą z prawem głosu (frekwencja w dokumencie).
     prisma.member.findMany({
       where: { organizationId: orgId },
-      select: { role: { select: { isOwner: true, permissions: true } } },
+      select: {
+        role: { select: { isOwner: true, permissions: true, canVote: true } },
+      },
     }),
   ]);
   if (!resolution) notFound();
@@ -149,7 +152,9 @@ export default async function ResolutionDocumentPage({
                 : {}),
             },
           })
-        : voters.filter((m) => can(m.role, "RESOLUTIONS", "WRITE")).length;
+        : voters.filter(
+            (m) => can(m.role, "RESOLUTIONS", "READ") && m.role.canVote,
+          ).length;
   const date = resolution.decidedAt ?? resolution.openedAt;
   const passed = resolution.status === "PASSED";
   const showVoters = !resolution.secretBallot && voteRows.length > 0;

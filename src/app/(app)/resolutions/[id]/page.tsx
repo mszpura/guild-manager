@@ -128,11 +128,12 @@ export default async function ResolutionDetailPage({
     resolution.status === "PASSED" || resolution.status === "REJECTED";
   const decisionCutoff = isDecided ? resolution.decidedAt : null;
 
-  // Uprawnieni do głosowania = dostęp do panelu Uchwały (WRITE) i rola z prawem
-  // głosu. Po rozstrzygnięciu pomijamy członków dopisanych już po tym momencie.
+  // Uprawnieni do głosowania = dostęp do panelu Uchwały (co najmniej odczyt — READ
+  // lub WRITE) i rola z prawem głosu. Po rozstrzygnięciu pomijamy członków
+  // dopisanych już po tym momencie.
   const eligibleMembers = voters.filter(
     (m) =>
-      can(m.role, "RESOLUTIONS", "WRITE") &&
+      can(m.role, "RESOLUTIONS", "READ") &&
       m.role.canVote &&
       (!decisionCutoff || m.joinedAt <= decisionCutoff),
   );
