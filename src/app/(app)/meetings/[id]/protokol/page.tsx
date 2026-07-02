@@ -2,6 +2,10 @@ import { notFound, redirect } from "next/navigation";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { QUORUM_THRESHOLD, hasQuorum } from "@/lib/meetings";
+import {
+  SIGNATURE_ROLE_LABELS,
+  SIGNATURE_ROLE_ORDER,
+} from "@/lib/resolutions";
 import { ProtocolPrintBar } from "@/components/protocol-print-bar";
 import { OrgDocumentIdentity } from "@/components/org-document-identity";
 
@@ -71,12 +75,18 @@ export default async function MeetingProtocolPage({
         },
       },
       attendances: { select: { memberId: true, present: true } },
+      signatures: { select: { role: true, signerName: true } },
     },
   });
   if (!meeting) notFound();
 
   // Protokół dostępny wyłącznie po zakończeniu spotkania.
   if (meeting.endedAt === null) redirect(`/meetings/${id}`);
+
+  // Tytuł podpisu → imię i nazwisko sygnatariusza (lub brak, gdy niepodpisane).
+  const signatureByRole = new Map(
+    meeting.signatures.map((s) => [s.role, s.signerName]),
+  );
 
   // Lista obecności obejmuje wyłącznie członków liczących się do kworum (role z
   // prawem głosu); pozostali nie są wymagani i nie figurują na liście.
@@ -235,8 +245,13 @@ export default async function MeetingProtocolPage({
 
         {/* podpisy */}
         <section className="grid grid-cols-2 gap-10 pt-10">
-          <Signature label="Przewodniczący zebrania" />
-          <Signature label="Protokolant" />
+          {SIGNATURE_ROLE_ORDER.map((role) => (
+            <Signature
+              key={role}
+              label={SIGNATURE_ROLE_LABELS[role]}
+              signerName={signatureByRole.get(role) ?? null}
+            />
+          ))}
         </section>
       </div>
     </div>
@@ -260,10 +275,23 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Signature({ label }: { label: string }) {
+function Signature({
+  label,
+  signerName,
+}: {
+  label: string;
+  signerName?: string | null;
+}) {
   return (
     <div className="text-center">
-      <div className="mb-1 h-12 border-b border-dashed" />
+      {/* Odręczny podpis nad linią — czcionka „podpisowa". */}
+      <div className="mb-1 flex h-12 items-end justify-center border-b border-dashed border-foreground/40">
+        {signerName ? (
+          <span className="font-signature pb-0.5 text-[28px] leading-none text-foreground/90">
+            {signerName}
+          </span>
+        ) : null}
+      </div>
       <div className="text-xs text-muted-foreground">{label}</div>
     </div>
   );

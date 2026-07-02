@@ -13,6 +13,7 @@ import {
   AgendaDecideControls,
   AttendanceToggle,
   EndMeetingButton,
+  MeetingSignControls,
 } from "@/components/meeting-detail-controls";
 import {
   AgendaVote,
@@ -96,6 +97,10 @@ export default async function MeetingDetailPage({
         },
       },
       attendances: { select: { memberId: true, present: true } },
+      signatures: {
+        orderBy: { signedAt: "asc" },
+        select: { role: true, signerName: true, memberId: true },
+      },
     },
   });
   if (!meeting) notFound();
@@ -168,6 +173,9 @@ export default async function MeetingDetailPage({
   // Głosowanie otwarte: spotkanie trwa, członek uprawniony i jest kworum.
   const votingOpen = !ended && eligibleToVote && quorumOk;
   const myInitials = initials(me.firstName, me.lastName);
+  // Tytuł, którym bieżący użytkownik podpisał protokół (lub null, jeśli jeszcze nie).
+  const mySignatureRole =
+    meeting.signatures.find((s) => s.memberId === me.id)?.role ?? null;
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -262,6 +270,7 @@ export default async function MeetingDetailPage({
                 meetingId={meeting.id}
                 ended={ended}
                 canReopen={isOwner}
+                pendingCount={pendingCount}
               />
             ) : null}
           </div>
@@ -526,6 +535,23 @@ export default async function MeetingDetailPage({
           )}
         </div>
       </div>
+
+      {/* podpisy protokołu — dostępne po zakończeniu spotkania */}
+      {ended ? (
+        <div className="rounded-xl border bg-card p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="font-heading text-base font-bold">Podpisy protokołu</h2>
+            <span className="text-xs text-muted-foreground">
+              {meeting.signatures.length} z 2
+            </span>
+          </div>
+          <MeetingSignControls
+            meetingId={meeting.id}
+            mySignatureRole={mySignatureRole}
+            signatures={meeting.signatures}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

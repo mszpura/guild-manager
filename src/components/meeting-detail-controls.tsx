@@ -3,13 +3,19 @@
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, X, RotateCcw } from "lucide-react";
+import { Check, X, RotateCcw, PenLine } from "lucide-react";
 import {
   decideAgendaItem,
   setAttendance,
   endMeeting,
   reopenMeeting,
+  signMeeting,
 } from "@/lib/actions/meetings";
+import {
+  SIGNATURE_ROLE_LABELS,
+  SIGNATURE_ROLE_ORDER,
+} from "@/lib/resolutions";
+import type { SignatureRole } from "@/generated/prisma/client";
 import { Button } from "@/components/ui/button";
 
 type AgendaStatus = "PENDING" | "APPROVED" | "REJECTED";
@@ -159,10 +165,13 @@ export function EndMeetingButton({
   meetingId,
   ended,
   canReopen,
+  pendingCount = 0,
 }: {
   meetingId: string;
   ended: boolean;
   canReopen: boolean;
+  // Liczba nierozpatrzonych punktów — dopóki > 0, nie można zakończyć spotkania.
+  pendingCount?: number;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -194,14 +203,92 @@ export function EndMeetingButton({
     ) : null;
   }
 
+  // Zakończenie zablokowane, dopóki są nierozpatrzone punkty porządku obrad.
+  const blocked = pendingCount > 0;
   return (
     <Button
       type="button"
-      disabled={pending}
+      disabled={pending || blocked}
       onClick={run}
+      title={
+        blocked
+          ? "Najpierw rozpatrz wszystkie punkty porządku obrad (zatwierdź lub odrzuć)."
+          : undefined
+      }
       className="bg-brand text-brand-foreground hover:bg-brand/90"
     >
       Zakończ spotkanie
     </Button>
+  );
+}
+
+// Przyciski podpisu pod protokołem zakończonego spotkania. Każdy tytuł obsadzany
+// jednokrotnie; zalogowany członek może złożyć tylko jeden podpis.
+export function MeetingSignControls({
+  meetingId,
+  mySignatureRole,
+  signatures,
+}: {
+  meetingId: string;
+  // Tytuł, którym podpisał się bieżący użytkownik (lub null, jeśli jeszcze nie podpisał).
+  mySignatureRole: SignatureRole | null;
+  // Złożone podpisy: tytuł → imię i nazwisko.
+  signatures: { role: SignatureRole; signerName: string }[];
+}) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const taken = new Map(signatures.map((s) => [s.role, s.signerName]));
+
+  function sign(role: SignatureRole) {
+    start(async () => {
+      try {
+        await signMeeting(meetingId, role);
+        router.refresh();
+        toast.success(`Podpisano jako ${SIGNATURE_ROLE_LABELS[role]}.`);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Nie udało się podpisać.");
+      }
+    });
+  }
+
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {SIGNATURE_ROLE_ORDER.map((role) => {
+        const signerName = taken.get(role);
+        const signedByMe = mySignatureRole === role;
+        // Mogę podpisać dany tytuł, jeśli nie jest zajęty i sam nie złożyłem jeszcze podpisu.
+        const canSign = !signerName && mySignatureRole === null;
+        return (
+          <div key={role} className="rounded-lg border bg-card p-4">
+            <div className="text-[11px] font-bold tracking-wide text-muted-foreground">
+              {SIGNATURE_ROLE_LABELS[role].toUpperCase()}
+            </div>
+            {signerName ? (
+              <div className="mt-2 flex items-center gap-2 text-sm">
+                <Check
+                  className={`size-4 shrink-0 ${signedByMe ? "text-emerald-600" : "text-muted-foreground"}`}
+                />
+                <span className="font-medium">{signerName}</span>
+                {signedByMe ? (
+                  <span className="text-xs text-muted-foreground">(Ty)</span>
+                ) : null}
+              </div>
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mt-2 w-full"
+                disabled={pending || !canSign}
+                onClick={() => sign(role)}
+              >
+                <PenLine className="size-4" />
+                Podpisz jako {SIGNATURE_ROLE_LABELS[role]}
+              </Button>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }

@@ -14,6 +14,7 @@ import { tallyVotes, voteOutcome } from "@/lib/resolutions";
 import {
   AgendaItemStatus,
   VoteChoice,
+  SignatureRole,
   Prisma,
 } from "@/generated/prisma/client";
 
@@ -367,6 +368,17 @@ export async function endMeeting(meetingId: string) {
 
   await requireMember(meeting.organizationId, "MEETINGS", "WRITE");
 
+  // Spotkania nie można zakończyć, dopóki któryś punkt porządku obrad pozostaje
+  // nierozpatrzony (należy go zatwierdzić albo odrzucić).
+  const pendingCount = await prisma.agendaItem.count({
+    where: { meetingId, status: "PENDING" },
+  });
+  if (pendingCount > 0) {
+    throw new Error(
+      "Nie można zakończyć spotkania — najpierw rozpatrz wszystkie punkty porządku obrad (zatwierdź lub odrzuć).",
+    );
+  }
+
   // Uprawnieni do głosowania na tym spotkaniu (mianownik progu) — rola z prawem
   // głosu i dopuszczona przez typ spotkania (pusta lista ról = wszyscy członkowie).
   const allowedRoleIds = meeting.meetingType.roles.map((r) => r.roleId);
@@ -457,6 +469,56 @@ export async function reopenMeeting(meetingId: string) {
 
   revalidateMeeting(meetingId);
   reopenedResolutionIds.forEach(revalidateResolutionViews);
+}
+
+// ─── Podpisy pod protokołem spotkania ──────────────────────────────────────
+
+// Składa podpis pod protokołem zakończonego spotkania w wybranej roli (tytule).
+// Reguły jak przy uchwałach:
+//  • podpisać można tylko zakończone spotkanie,
+//  • jeden członek podpisuje dane spotkanie najwyżej raz,
+//  • każdy tytuł (Przewodniczący/Protokolant) obsadzany najwyżej raz.
+// Wymaga MEETINGS READ (podpisują członkowie, nie tylko zarząd).
+export async function signMeeting(meetingId: string, role: SignatureRole) {
+  const meeting = await prisma.meeting.findUnique({
+    where: { id: meetingId },
+    select: { organizationId: true, endedAt: true },
+  });
+  if (!meeting) throw new Error("Spotkanie nie istnieje.");
+
+  const me = await requireMember(meeting.organizationId, "MEETINGS", "READ");
+
+  if (meeting.endedAt === null) {
+    throw new Error("Podpisać można tylko zakończone spotkanie.");
+  }
+
+  // Czytelne komunikaty przed wstawieniem; unikaty w bazie pozostają twardym zabezpieczeniem.
+  const existing = await prisma.meetingSignature.findMany({
+    where: { meetingId },
+    select: { memberId: true, role: true },
+  });
+  if (existing.some((s) => s.memberId === me.id)) {
+    throw new Error("Już podpisałeś(-aś) ten protokół.");
+  }
+  if (existing.some((s) => s.role === role)) {
+    throw new Error("Ten podpis został już złożony przez inną osobę.");
+  }
+
+  const signerName = [me.firstName, me.lastName].filter(Boolean).join(" ").trim();
+
+  try {
+    await prisma.meetingSignature.create({
+      data: { meetingId, memberId: me.id, role, signerName },
+    });
+  } catch (e) {
+    // Wyścig: unikat dopilnuje, że nie powstaną dwa podpisy tego samego członka/tytułu.
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      throw new Error("Ten podpis został już złożony.");
+    }
+    throw e;
+  }
+
+  revalidateMeeting(meetingId);
 }
 
 // ─── Komentarze do punktów porządku obrad ─────────────────────────────────

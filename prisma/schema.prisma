@@ -281,6 +281,7 @@ model Member {
   agendaVotes     AgendaVote[]
   resolutionVotes      ResolutionVote[]
   resolutionSignatures ResolutionSignature[]
+  meetingSignatures    MeetingSignature[]
   membershipFees       MembershipFee[]
 
   @@unique([organizationId, email]) // jeden e-mail = jeden członek danego stowarzyszenia
@@ -370,6 +371,7 @@ model Meeting {
 
   agendaItems  AgendaItem[]
   attendances  MeetingAttendance[]
+  signatures   MeetingSignature[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -377,6 +379,26 @@ model Meeting {
   @@index([organizationId, startsAt])
   @@index([createdById])
   @@index([meetingTypeId])
+}
+
+// Podpis pod protokołem (zakończonego) spotkania. Reguły jak przy uchwałach:
+//  • jeden członek podpisuje dane spotkanie najwyżej raz (unikat meetingId+memberId),
+//  • każdy tytuł (Przewodniczący/Protokolant) obsadzany najwyżej raz (unikat meetingId+role).
+// signerName to migawka imienia i nazwiska z chwili podpisu (integralność dokumentu).
+model MeetingSignature {
+  id        String  @id @default(cuid())
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  meetingId String
+  member    Member  @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  memberId  String
+
+  role       SignatureRole
+  signerName String
+  signedAt   DateTime      @default(now())
+
+  @@unique([meetingId, memberId])
+  @@unique([meetingId, role])
+  @@index([meetingId])
 }
 
 enum AgendaItemStatus {

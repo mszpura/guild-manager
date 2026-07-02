@@ -58,7 +58,7 @@ export default async function ResolutionsPage({
       : {}),
   };
 
-  const [rows, memberCount, counts, resolutionTypes] = await Promise.all([
+  const [rows, members, counts, resolutionTypes] = await Promise.all([
     prisma.resolution.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -74,13 +74,24 @@ export default async function ResolutionsPage({
         // wynik pokazujemy po zakończeniu spotkania (gdy punkt poddano głosowaniu).
         agendaItem: {
           select: {
-            meeting: { select: { endedAt: true } },
+            meeting: {
+              select: {
+                endedAt: true,
+                meetingType: { select: { roles: { select: { roleId: true } } } },
+              },
+            },
             votes: { select: { choice: true } },
           },
         },
       },
     }),
-    prisma.member.count({ where: { organizationId: orgId } }),
+    prisma.member.findMany({
+      where: { organizationId: orgId },
+      select: {
+        roleId: true,
+        role: { select: { isOwner: true, permissions: true, canVote: true } },
+      },
+    }),
     prisma.resolution.groupBy({
       by: ["status"],
       where: { organizationId: orgId },
@@ -97,6 +108,20 @@ export default async function ResolutionsPage({
       },
     }),
   ]);
+
+  // Uprawnieni do głosowania online (dostęp WRITE do Uchwał + prawo głosu) —
+  // mianownik paska wyniku dla uchwał głosowanych online.
+  const onlineEligibleCount = members.filter(
+    (m) => can(m.role, "RESOLUTIONS", "WRITE") && m.role.canVote,
+  ).length;
+  // Liczba uprawnionych do głosowania na spotkaniu danego typu (rola z prawem
+  // głosu i dopuszczona przez typ; pusta lista ról = wszyscy głosujący członkowie).
+  const meetingEligibleCount = (allowedRoleIds: string[]) =>
+    members.filter(
+      (m) =>
+        m.role.canVote &&
+        (allowedRoleIds.length === 0 || allowedRoleIds.includes(m.roleId)),
+    ).length;
 
   const countByStatus = (s: ResolutionStatus) =>
     counts.find((c) => c.status === s)?._count ?? 0;
@@ -199,6 +224,12 @@ export default async function ResolutionsPage({
                 const decided = r.status === "PASSED" || r.status === "REJECTED";
                 const barVotes = meetingItem ? meetingItem.votes : r.votes;
                 const revealBar = meetingItem ? decided : r.status !== "DRAFT";
+                // Mianownik paska = liczba uprawnionych (spójnie z progiem/wynikiem).
+                const eligibleCount = meetingItem
+                  ? meetingEligibleCount(
+                      meetingItem.meeting.meetingType.roles.map((x) => x.roleId),
+                    )
+                  : onlineEligibleCount;
                 const date = meetingItem
                   ? decided
                     ? (r.decidedAt ?? meetingItem.meeting.endedAt)
@@ -227,7 +258,7 @@ export default async function ResolutionsPage({
                     </span>
                     <VoteCell
                       votes={barVotes}
-                      memberCount={memberCount}
+                      eligibleCount={eligibleCount}
                       hasVote={revealBar}
                     />
                     <span>
@@ -266,18 +297,19 @@ export default async function ResolutionsPage({
 
 function VoteCell({
   votes,
-  memberCount,
+  eligibleCount,
   hasVote,
 }: {
   votes: { choice: "FOR" | "AGAINST" | "ABSTAIN" }[];
-  memberCount: number;
+  // Liczba uprawnionych do głosowania — mianownik proporcji na pasku.
+  eligibleCount: number;
   hasVote: boolean;
 }) {
   if (!hasVote || votes.length === 0) {
     return <span className="text-xs text-muted-foreground/60">—</span>;
   }
   const t = tallyVotes(votes);
-  const base = Math.max(memberCount, t.FOR + t.AGAINST + t.ABSTAIN, 1);
+  const base = Math.max(eligibleCount, t.FOR + t.AGAINST + t.ABSTAIN, 1);
   const pct = (n: number) => `${(n / base) * 100}%`;
   return (
     <div>
