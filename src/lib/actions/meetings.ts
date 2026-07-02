@@ -231,11 +231,16 @@ export async function updateMeeting(
 export async function deleteMeeting(meetingId: string) {
   const meeting = await prisma.meeting.findUnique({
     where: { id: meetingId },
-    select: { organizationId: true },
+    select: { organizationId: true, endedAt: true },
   });
   if (!meeting) throw new Error("Spotkanie nie istnieje.");
 
   await requireMember(meeting.organizationId, "MEETINGS", "WRITE");
+
+  // Zakończonego spotkania nie usuwamy — protokół i głosowania są już zamknięte.
+  if (meeting.endedAt !== null) {
+    throw new Error("Nie można usunąć zakończonego spotkania.");
+  }
 
   await prisma.meeting.delete({ where: { id: meetingId } });
   revalidateMeeting();

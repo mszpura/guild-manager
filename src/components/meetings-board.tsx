@@ -226,9 +226,11 @@ function MeetingCard({
 
   return (
     <div className="flex items-stretch gap-4 rounded-xl border bg-card p-4 transition-[border-color,box-shadow] hover:border-input hover:shadow-[0_4px_14px_-8px_rgba(20,35,63,0.16)] sm:p-5">
-      {/* kafelek daty */}
-      <div
-        className={`flex w-[62px] shrink-0 flex-col items-center justify-center rounded-[10px] border py-2.5 ${chipTint}`}
+      {/* kafelek daty — klikalny, prowadzi do szczegółów spotkania */}
+      <Link
+        href={`/meetings/${meeting.id}`}
+        aria-label={`Szczegóły: ${meeting.title}`}
+        className={`flex w-[62px] shrink-0 flex-col items-center justify-center rounded-[10px] border py-2.5 transition-[border-color,box-shadow] hover:border-input hover:shadow-[0_4px_14px_-8px_rgba(20,35,63,0.16)] ${chipTint}`}
       >
         <span className="text-[10.5px] font-bold tracking-wider">
           {meeting.mon}
@@ -241,7 +243,7 @@ function MeetingCard({
           {meeting.day}
         </span>
         <span className="text-[10.5px] font-semibold">{meeting.year}</span>
-      </div>
+      </Link>
 
       {/* treść */}
       <div className="min-w-0 flex-1">
@@ -377,10 +379,13 @@ function MeetingCard({
                   meeting={meeting.edit}
                 />
               ) : null}
-              <MeetingDeleteButton
-                meetingId={meeting.id}
-                title={meeting.title}
-              />
+              {/* Zakończonego spotkania nie można usunąć (protokół pozostaje). */}
+              {!isDone ? (
+                <MeetingDeleteButton
+                  meetingId={meeting.id}
+                  title={meeting.title}
+                />
+              ) : null}
             </div>
           ) : null}
         </div>
