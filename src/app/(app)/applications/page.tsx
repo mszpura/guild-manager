@@ -1,10 +1,13 @@
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
+import { can } from "@/lib/permissions";
 import { ApplicationStatus, PaymentStatus } from "@/generated/prisma/client";
 import { formatPLN } from "@/lib/money";
 import { parseCustomData, type CustomDatum } from "@/lib/links";
 import { ApplicationActions } from "@/components/application-actions";
+import { InviteLinkCard } from "@/components/invite-link-card";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -40,9 +43,11 @@ export default async function ApplicationsPage() {
   if (!data) redirect("/signin");
   if (!data.active) redirect("/organizations/new");
   const orgId = data.active.organizationId;
-  await requireMember(orgId, "APPLICATIONS", "READ");
+  const me = await requireMember(orgId, "APPLICATIONS", "READ");
+  // Zarządzanie linkiem zapraszającym wymaga prawa zapisu do Zgłoszeń.
+  const canManage = can(me.role, "APPLICATIONS", "WRITE");
 
-  const [applications, roles] = await Promise.all([
+  const [applications, roles, org] = await Promise.all([
     prisma.membershipApplication.findMany({
       where: { organizationId: orgId },
       orderBy: [{ status: "asc" }, { createdAt: "desc" }], // PENDING najpierw
@@ -54,7 +59,17 @@ export default async function ApplicationsPage() {
       orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
       select: { id: true, name: true },
     }),
+    canManage
+      ? prisma.organization.findUnique({
+          where: { id: orgId },
+          select: { inviteToken: true, inviteEnabled: true },
+        })
+      : Promise.resolve(null),
   ]);
+
+  const inviteUrl = org?.inviteToken
+    ? await buildInviteUrl(org.inviteToken)
+    : "";
 
   return (
     <div className="mx-auto max-w-6xl space-y-8">
@@ -64,6 +79,14 @@ export default async function ApplicationsPage() {
           Rozpatrz zgłoszenia osób, które chcą dołączyć do stowarzyszenia.
         </p>
       </div>
+
+      {canManage ? (
+        <InviteLinkCard
+          organizationId={orgId}
+          inviteUrl={inviteUrl}
+          enabled={org?.inviteEnabled ?? false}
+        />
+      ) : null}
 
       {applications.length === 0 ? (
         <p className="rounded-md border border-dashed p-8 text-center text-muted-foreground">
@@ -181,4 +204,12 @@ export default async function ApplicationsPage() {
       )}
     </div>
   );
+}
+
+// Buduje absolutny URL zaproszenia z nagłówków żądania (dev i produkcja).
+async function buildInviteUrl(token: string) {
+  const h = await headers();
+  const host = h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "http";
+  return `${proto}://${host}/join/${token}`;
 }
