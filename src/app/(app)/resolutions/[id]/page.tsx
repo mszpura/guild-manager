@@ -517,8 +517,10 @@ export default async function ResolutionDetailPage({
                   </div>
                 ) : null}
 
-                {/* uprawnieni, którzy jeszcze nie oddali głosu */}
-                {notVotedMembers.length > 0 ? (
+                {/* uprawnieni, którzy jeszcze nie oddali głosu — ujawniani dopiero
+                    po oddaniu głosu (lub rozstrzygnięciu), tak jak lista oddanych
+                    głosów: przed zagłosowaniem nie zdradzamy, kto już głosował. */}
+                {showOnlineResults && notVotedMembers.length > 0 ? (
                   <div className="mt-5 border-t pt-4">
                     <p className="mb-2 text-[11px] font-bold tracking-wide text-muted-foreground">
                       JESZCZE NIE ODDALI GŁOSU · {notVotedMembers.length}

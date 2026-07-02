@@ -8,8 +8,9 @@ import { tallyVotes, voteOutcome } from "@/lib/resolutions";
 import { can } from "@/lib/permissions";
 import { Prisma, VoteChoice, SignatureRole } from "@/generated/prisma/client";
 
-// Liczba uprawnionych do głosowania online nad uchwałami: członkowie z dostępem
-// WRITE do Uchwał i rolą z prawem głosu (mianownik progu i paska frekwencji).
+// Liczba uprawnionych do głosowania online nad uchwałami: członkowie z dostępem do
+// Uchwał (co najmniej odczyt — READ lub WRITE) i rolą z prawem głosu (mianownik
+// progu i paska frekwencji). Spójne z regułą oddawania głosu w castResolutionVote.
 async function eligibleResolutionVoterCount(
   organizationId: string,
 ): Promise<number> {
@@ -18,7 +19,7 @@ async function eligibleResolutionVoterCount(
     select: { role: { select: { isOwner: true, permissions: true, canVote: true } } },
   });
   return members.filter(
-    (m) => can(m.role, "RESOLUTIONS", "WRITE") && m.role.canVote,
+    (m) => can(m.role, "RESOLUTIONS", "READ") && m.role.canVote,
   ).length;
 }
 

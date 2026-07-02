@@ -110,10 +110,10 @@ export default async function ResolutionsPage({
     }),
   ]);
 
-  // Uprawnieni do głosowania online (dostęp WRITE do Uchwał + prawo głosu) —
-  // mianownik paska wyniku dla uchwał głosowanych online.
+  // Uprawnieni do głosowania online (dostęp do Uchwał co najmniej READ + prawo
+  // głosu) — mianownik paska wyniku dla uchwał głosowanych online.
   const onlineEligibleCount = members.filter(
-    (m) => can(m.role, "RESOLUTIONS", "WRITE") && m.role.canVote,
+    (m) => can(m.role, "RESOLUTIONS", "READ") && m.role.canVote,
   ).length;
   // Liczba uprawnionych do głosowania na spotkaniu danego typu (rola z prawem
   // głosu i dopuszczona przez typ; pusta lista ról = wszyscy głosujący członkowie).
