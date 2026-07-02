@@ -5,6 +5,7 @@ import { QUORUM_THRESHOLD, hasQuorum } from "@/lib/meetings";
 import {
   SIGNATURE_ROLE_LABELS,
   SIGNATURE_ROLE_ORDER,
+  RESOLUTION_STATUS_LABELS,
 } from "@/lib/resolutions";
 import { ProtocolPrintBar } from "@/components/protocol-print-bar";
 import { OrgDocumentIdentity } from "@/components/org-document-identity";
@@ -71,6 +72,10 @@ export default async function MeetingProtocolPage({
           description: true,
           status: true,
           votable: true,
+          resolutionId: true,
+          // Dla punktu-uchwały pokazujemy wynik samej uchwały (wg jej progu),
+          // a nie surową decyzję o punkcie porządku obrad.
+          resolution: { select: { status: true } },
           votes: { select: { choice: true } },
         },
       },
@@ -218,7 +223,9 @@ export default async function MeetingProtocolPage({
                         {i + 1}. {item.title}
                       </span>
                       <span className="shrink-0 text-xs font-semibold text-muted-foreground">
-                        {STATUS_LABEL[item.status]}
+                        {item.resolution
+                          ? RESOLUTION_STATUS_LABELS[item.resolution.status]
+                          : STATUS_LABEL[item.status]}
                       </span>
                     </div>
                     {item.description ? (
