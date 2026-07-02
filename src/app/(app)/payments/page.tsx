@@ -5,9 +5,22 @@ import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/permissions";
 import { formatFeeDueDate } from "@/lib/payments";
 import { summarizeFees } from "@/lib/fees";
-import { FeesManager, type FeeRow } from "@/components/fees-manager";
+import { FeesManager, type FeeRow, type Filter } from "@/components/fees-manager";
 
-export default async function PaymentsPage() {
+// Mapowanie parametru URL ?status= na filtr rejestru (przejścia z pulpitu).
+const FILTER_BY_STATUS: Record<string, Filter> = {
+  paid: "PAID",
+  unpaid: "UNPAID",
+  exempt: "EXEMPT",
+};
+
+export default async function PaymentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ status?: string }>;
+}) {
+  const sp = await searchParams;
+  const initialFilter = FILTER_BY_STATUS[sp.status ?? ""] ?? "ALL";
   const data = await getActiveOrg();
   if (!data) redirect("/signin");
   if (!data.active) redirect("/organizations/new");
@@ -102,6 +115,7 @@ export default async function PaymentsPage() {
           charged={charged}
           arrears={arrears}
           debtorCount={debtorCount}
+          initialFilter={initialFilter}
         />
       ) : (
         <div className="rounded-xl border bg-card p-10 text-center">

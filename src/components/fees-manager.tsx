@@ -54,7 +54,7 @@ const CYCLE_STYLE: Record<
   NA: { label: "Nie dotyczy", mark: "–", color: "#bcc4d4", bg: "#f1f3f8" },
 };
 
-type Filter = "ALL" | "PAID" | "UNPAID" | "EXEMPT";
+export type Filter = "ALL" | "PAID" | "UNPAID" | "EXEMPT";
 
 // Polska odmiana: „1 osoba zalega", „2 osoby zalegają", „5 osób zalega".
 function debtorsLabel(n: number): string {
@@ -529,6 +529,7 @@ export function FeesManager({
   charged,
   arrears,
   debtorCount,
+  initialFilter = "ALL",
 }: {
   organizationId: string;
   year: number;
@@ -539,8 +540,9 @@ export function FeesManager({
   charged: number; // naliczono w bieżącym roku (grosze)
   arrears: number; // suma zaległości (grosze)
   debtorCount: number; // liczba członków z zaległościami
+  initialFilter?: Filter; // filtr początkowy z URL (np. przejście z pulpitu)
 }) {
-  const [filter, setFilter] = useState<Filter>("ALL");
+  const [filter, setFilter] = useState<Filter>(initialFilter);
   const [query, setQuery] = useState("");
 
   const counts = useMemo(() => {

@@ -203,7 +203,7 @@ export default async function DashboardPage() {
         <FeeStat feeSummary={feeSummary} membershipPaid={org?.membershipPaid ?? false} />
 
         <Link
-          href="/meetings"
+          href={nextMeeting ? `/meetings/${nextMeeting.id}` : "/meetings"}
           className="block rounded-xl bg-brand p-5 text-brand-foreground transition-opacity hover:opacity-95"
         >
           <div className="mb-2 flex items-center gap-2 text-[11px] font-bold tracking-[0.04em] text-white/60">
@@ -408,7 +408,7 @@ export default async function DashboardPage() {
                   Składki do uregulowania
                 </h3>
                 <Link
-                  href="/payments"
+                  href="/payments?status=unpaid"
                   className="text-sm font-semibold text-primary"
                 >
                   Wszystkie →
@@ -510,7 +510,7 @@ function FeeStat({
   const { rate, debtorCount } = feeSummary;
   return (
     <Link
-      href="/payments"
+      href="/payments?status=paid"
       className="rounded-xl border bg-card p-5 transition-colors hover:border-primary/50"
     >
       <StatLabel>OPŁACONE SKŁADKI</StatLabel>
