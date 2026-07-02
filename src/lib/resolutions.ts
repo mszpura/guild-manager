@@ -16,6 +16,7 @@ export const SIGNATURE_ROLE_ORDER: SignatureRole[] = ["CHAIRPERSON", "SECRETARY"
 
 export const RESOLUTION_STATUS_LABELS: Record<ResolutionStatus, string> = {
   DRAFT: "Szkic",
+  AWAITING_MEETING: "Oczekuje na spotkanie",
   VOTING: "W głosowaniu",
   PASSED: "Przyjęta",
   REJECTED: "Odrzucona",
@@ -24,6 +25,7 @@ export const RESOLUTION_STATUS_LABELS: Record<ResolutionStatus, string> = {
 // Klasy Tailwind dla znacznika statusu (kolory zgodne z szablonem).
 export const RESOLUTION_STATUS_BADGE: Record<ResolutionStatus, string> = {
   DRAFT: "bg-muted text-muted-foreground",
+  AWAITING_MEETING: "bg-sky-50 text-sky-700",
   VOTING: "bg-amber-50 text-amber-700",
   PASSED: "bg-emerald-50 text-emerald-700",
   REJECTED: "bg-destructive/10 text-destructive",
@@ -39,20 +41,25 @@ export function tallyVotes(votes: { choice: VoteChoice }[]): VoteTally {
   };
 }
 
-// Wynik głosowania względem progu typu uchwały. Z progiem (procent głosów „za"
-// wśród oddanych) uchwała przechodzi, gdy udział „za" osiąga próg. Bez typu/progu
-// (uchwały sprzed wprowadzenia typów) stosujemy zwykłą większość (remis = odrzucona).
+// Wynik głosowania względem progu typu uchwały. Próg to procent głosów „za"
+// liczony od liczby UPRAWNIONYCH do głosowania (spójnie z paskiem frekwencji —
+// np. 75% oznacza „za" u co najmniej 75% uprawnionych, nie tylko oddanych głosów).
+// Bez typu/progu stosujemy zwykłą większość oddanych głosów (remis = odrzucona).
 export function voteOutcome(
   tally: VoteTally,
-  threshold?: number | null,
+  threshold: number | null | undefined,
+  eligibleCount: number,
 ): "PASSED" | "REJECTED" {
   if (threshold == null) {
     return tally.FOR > tally.AGAINST ? "PASSED" : "REJECTED";
   }
   const cast = tally.FOR + tally.AGAINST + tally.ABSTAIN;
-  if (cast === 0) return "REJECTED";
+  // Mianownik jak na pasku wyniku: liczba uprawnionych (a gdyby oddano więcej
+  // głosów niż uprawnionych — liczba oddanych, jako zabezpieczenie).
+  const base = Math.max(eligibleCount, cast);
+  if (base === 0) return "REJECTED";
   // Porównanie na liczbach całkowitych (bez błędów zaokrąglenia ułamków).
-  return tally.FOR * 100 >= threshold * cast ? "PASSED" : "REJECTED";
+  return tally.FOR * 100 >= threshold * base ? "PASSED" : "REJECTED";
 }
 
 // Skrót tekstowy wyniku, np. „24 za · 3 przeciw · 1 wstrz.".

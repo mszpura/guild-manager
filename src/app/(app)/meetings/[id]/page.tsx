@@ -4,6 +4,10 @@ import { getActiveOrg, requireMember } from "@/lib/tenant";
 import { prisma } from "@/lib/prisma";
 import { can } from "@/lib/permissions";
 import { QUORUM_THRESHOLD, toDateTimeLocalValue } from "@/lib/meetings";
+import {
+  RESOLUTION_STATUS_LABELS,
+  RESOLUTION_STATUS_BADGE,
+} from "@/lib/resolutions";
 import { MeetingFormDialog } from "@/components/meeting-form-dialog";
 import {
   AgendaDecideControls,
@@ -77,6 +81,7 @@ export default async function MeetingDetailPage({
           description: true,
           status: true,
           resolutionId: true,
+          resolution: { select: { status: true } },
           votes: { select: { memberId: true, choice: true } },
           comments: {
             orderBy: { createdAt: "asc" },
@@ -375,7 +380,17 @@ export default async function MeetingDetailPage({
                             </Link>
                           ) : null}
                         </div>
-                        <AgendaStatusBadge status={item.status} />
+                        {/* Dla punktu-uchwały pokazujemy status samej uchwały
+                            (wynik wg jej progu), a nie surową decyzję o punkcie. */}
+                        {item.resolution ? (
+                          <span
+                            className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${RESOLUTION_STATUS_BADGE[item.resolution.status]}`}
+                          >
+                            {RESOLUTION_STATUS_LABELS[item.resolution.status]}
+                          </span>
+                        ) : (
+                          <AgendaStatusBadge status={item.status} />
+                        )}
                       </div>
                       {item.description ? (
                         <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">

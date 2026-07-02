@@ -7,7 +7,6 @@ import {
   RESOLUTION_STATUS_LABELS,
   RESOLUTION_STATUS_BADGE,
   tallyVotes,
-  voteOutcome,
 } from "@/lib/resolutions";
 import { ResolutionFormDialog } from "@/components/resolution-form-dialog";
 import { AddResolutionToMeeting } from "@/components/resolution-meeting-controls";
@@ -155,7 +154,6 @@ export default async function ResolutionDetailPage({
     : [];
 
   // Głosowanie na spotkaniu — dane do panelu wyniku (w stylu głosowania online).
-  const meetingEnded = meetingItem?.meeting.endedAt != null;
   const meetingTally = tallyVotes(meetingItem?.votes ?? []);
   const meetingCast = meetingTally.FOR + meetingTally.AGAINST + meetingTally.ABSTAIN;
   const myMeetingChoice =
@@ -175,11 +173,6 @@ export default async function ResolutionDetailPage({
         },
       })
     : 0;
-  // Wynik wyznaczamy z głosów oddanych na spotkaniu i progu z typu uchwały —
-  // tylko gdy punkt poddano pod głosowanie (APPROVED) i spotkanie się zakończyło.
-  const meetingPassed =
-    voteOutcome(meetingTally, resolution.resolutionType?.voteThreshold ?? null) ===
-    "PASSED";
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -253,12 +246,15 @@ export default async function ResolutionDetailPage({
                 }}
               />
             ) : null}
-            <ResolutionStatusControls
-              resolutionId={resolution.id}
-              status={resolution.status}
-              hasSignatures={resolution.signatures.length > 0}
-              votingDisabled={requiresMeeting}
-            />
+            {/* Uchwały głosowane na spotkaniu nie mają sterowania online — ich
+                status prowadzi cykl spotkania (zatwierdzenie punktu, zakończenie). */}
+            {!requiresMeeting ? (
+              <ResolutionStatusControls
+                resolutionId={resolution.id}
+                status={resolution.status}
+                hasSignatures={resolution.signatures.length > 0}
+              />
+            ) : null}
             <ResolutionDeleteButton
               resolutionId={resolution.id}
               label={`${resolution.number} — ${resolution.title}`}
@@ -286,7 +282,7 @@ export default async function ResolutionDetailPage({
           <h2 className="font-heading text-base font-bold">Głosowanie</h2>
           <span className="text-xs text-muted-foreground">
             {requiresMeeting
-              ? meetingItem && meetingEnded
+              ? meetingItem && isDecided
                 ? `${meetingCast} z ${meetingEligibleCount} głosów`
                 : "Na spotkaniu"
               : isDraft
@@ -305,7 +301,7 @@ export default async function ResolutionDetailPage({
             {meetingItem ? (
               <div className="space-y-3">
                 <p className="text-sm">
-                  {meetingEnded
+                  {isDecided
                     ? "Głosowano na spotkaniu:"
                     : "W porządku obrad spotkania:"}{" "}
                   <Link
@@ -321,39 +317,41 @@ export default async function ResolutionDetailPage({
                 </p>
 
                 {/* Panel wyniku w tym samym stylu co głosowanie online — nieaktywny
-                    (głos oddaje się na spotkaniu), wynik ujawniany po zakończeniu. */}
+                    (głos oddaje się na spotkaniu), wynik ujawniany po rozstrzygnięciu. */}
                 <ResolutionVoteButtons
                   resolutionId={resolution.id}
                   tally={meetingTally}
                   myChoice={myMeetingChoice}
                   canVote={false}
                   eligibleCount={meetingEligibleCount}
-                  showResults={meetingEnded}
+                  showResults={isDecided}
                 />
 
-                {!meetingEnded ? (
-                  <p className="text-sm text-muted-foreground">
-                    Głos oddaje się na spotkaniu. Wynik pojawi się po jego
-                    zakończeniu.
-                  </p>
-                ) : meetingItem.status === "APPROVED" ? (
+                {resolution.status === "PASSED" ||
+                resolution.status === "REJECTED" ? (
                   <p className="text-sm">
                     Wynik:{" "}
                     <strong
                       className={
-                        meetingPassed ? "text-emerald-700" : "text-destructive"
+                        resolution.status === "PASSED"
+                          ? "text-emerald-700"
+                          : "text-destructive"
                       }
                     >
-                      {meetingPassed ? "Przyjęta" : "Odrzucona"}
+                      {resolution.status === "PASSED" ? "Przyjęta" : "Odrzucona"}
                     </strong>{" "}
                     ({meetingTally.FOR} za, {meetingTally.AGAINST} przeciw,{" "}
                     {meetingTally.ABSTAIN} wstrzymujących się).
                   </p>
+                ) : resolution.status === "VOTING" ? (
+                  <p className="text-sm text-muted-foreground">
+                    Głosowanie trwa na spotkaniu. Wynik pojawi się po jego
+                    zakończeniu.
+                  </p>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    {meetingItem.status === "REJECTED"
-                      ? "Punkt uchwały został odrzucony na spotkaniu — nie przeprowadzono głosowania."
-                      : "Uchwały nie poddano pod głosowanie na spotkaniu."}
+                    Uchwała oczekuje na głosowanie na spotkaniu — otworzy je
+                    prowadzący, zatwierdzając punkt porządku obrad.
                   </p>
                 )}
               </div>

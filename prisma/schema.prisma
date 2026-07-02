@@ -466,7 +466,8 @@ model MeetingAttendance {
 
 enum ResolutionStatus {
   DRAFT // Szkic — przygotowywana, brak głosowania
-  VOTING // W głosowaniu — zbieranie głosów online
+  AWAITING_MEETING // Oczekuje na spotkanie — dodana do porządku obrad, głosowanie jeszcze nieotwarte
+  VOTING // W głosowaniu — zbieranie głosów (online albo na spotkaniu)
   PASSED // Przyjęta
   REJECTED // Odrzucona
 }

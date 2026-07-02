@@ -5,7 +5,22 @@ import { prisma } from "@/lib/prisma";
 import { requireMember } from "@/lib/tenant";
 import { resolutionSchema } from "@/lib/validations";
 import { tallyVotes, voteOutcome } from "@/lib/resolutions";
+import { can } from "@/lib/permissions";
 import { Prisma, VoteChoice, SignatureRole } from "@/generated/prisma/client";
+
+// Liczba uprawnionych do głosowania online nad uchwałami: członkowie z dostępem
+// WRITE do Uchwał i rolą z prawem głosu (mianownik progu i paska frekwencji).
+async function eligibleResolutionVoterCount(
+  organizationId: string,
+): Promise<number> {
+  const members = await prisma.member.findMany({
+    where: { organizationId },
+    select: { role: { select: { isOwner: true, permissions: true, canVote: true } } },
+  });
+  return members.filter(
+    (m) => can(m.role, "RESOLUTIONS", "WRITE") && m.role.canVote,
+  ).length;
+}
 
 export type ResolutionFormState = { error?: string; ok?: boolean } | undefined;
 
@@ -197,10 +212,14 @@ export async function closeResolutionVoting(resolutionId: string) {
     throw new Error("Zamknąć można tylko trwające głosowanie.");
   }
 
-  // Próg z typu uchwały (brak typu → zwykła większość).
+  // Próg z typu uchwały liczony względem liczby uprawnionych (brak typu → większość).
+  const eligibleCount = await eligibleResolutionVoterCount(
+    resolution.organizationId,
+  );
   const outcome = voteOutcome(
     tallyVotes(resolution.votes),
     resolution.resolutionType?.voteThreshold ?? null,
+    eligibleCount,
   );
   await prisma.resolution.update({
     where: { id: resolutionId },
@@ -387,17 +406,24 @@ export async function addResolutionToMeeting(
   }
 
   // Punkt-uchwała trafia na koniec porządku obrad; jest głosowalny (votable).
+  // Uchwała przechodzi w stan „Oczekuje na spotkanie".
   const count = await prisma.agendaItem.count({ where: { meetingId } });
-  await prisma.agendaItem.create({
-    data: {
-      meetingId,
-      order: count,
-      title: `Uchwała nr ${resolution.number}: ${resolution.title}`,
-      description: resolution.content,
-      votable: true,
-      resolutionId,
-    },
-  });
+  await prisma.$transaction([
+    prisma.agendaItem.create({
+      data: {
+        meetingId,
+        order: count,
+        title: `Uchwała nr ${resolution.number}: ${resolution.title}`,
+        description: resolution.content,
+        votable: true,
+        resolutionId,
+      },
+    }),
+    prisma.resolution.update({
+      where: { id: resolutionId },
+      data: { status: "AWAITING_MEETING" },
+    }),
+  ]);
 
   revalidateResolution(resolutionId);
   revalidatePath("/meetings");

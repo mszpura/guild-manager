@@ -10,6 +10,7 @@ import {
 } from "@/lib/validations";
 import { can } from "@/lib/permissions";
 import { hasQuorum } from "@/lib/meetings";
+import { tallyVotes, voteOutcome } from "@/lib/resolutions";
 import {
   AgendaItemStatus,
   VoteChoice,
@@ -23,6 +24,13 @@ function revalidateMeeting(meetingId?: string) {
   revalidatePath("/meetings");
   revalidatePath("/dashboard");
   if (meetingId) revalidatePath(`/meetings/${meetingId}`);
+}
+
+// Odświeża widoki uchwały (gdy status uchwały zmienia się przez cykl spotkania).
+function revalidateResolutionViews(resolutionId: string) {
+  revalidatePath("/resolutions");
+  revalidatePath(`/resolutions/${resolutionId}`);
+  revalidatePath(`/resolutions/${resolutionId}/dokument`);
 }
 
 // Sprawdza, że wskazany typ spotkania należy do stowarzyszenia.
@@ -158,7 +166,7 @@ export async function updateMeeting(
   // Istniejące punkty tego spotkania — tylko ich id wolno aktualizować.
   const existing = await prisma.agendaItem.findMany({
     where: { meetingId },
-    select: { id: true },
+    select: { id: true, resolutionId: true },
   });
   const existingIds = new Set(existing.map((e) => e.id));
 
@@ -179,24 +187,42 @@ export async function updateMeeting(
   const keptIds = new Set(updateOps.map((op) => op.where.id));
   const toDelete = [...existingIds].filter((id) => !keptIds.has(id));
 
+  // Usunięcie punktu-uchwały z porządku odpina uchwałę — wraca ona do stanu Szkic
+  // (można ją potem dodać do innego spotkania). Spotkanie nie jest zakończone, więc
+  // taka uchwała jest najwyżej „W głosowaniu" i nie może być podpisana.
+  const resolutionIdsToReset = existing
+    .filter((e) => e.resolutionId && toDelete.includes(e.id))
+    .map((e) => e.resolutionId as string);
+
   // Porządek obrad godzimy po id; role udziału wynikają z typu spotkania.
-  await prisma.meeting.update({
-    where: { id: meetingId },
-    data: {
-      title: result.data.title,
-      meetingTypeId: result.data.meetingTypeId,
-      startsAt: result.data.startsAt,
-      isOnline: result.data.isOnline,
-      location: result.data.location,
-      agendaItems: {
-        deleteMany: { id: { in: toDelete } },
-        update: updateOps,
-        create: createOps,
+  await prisma.$transaction([
+    prisma.meeting.update({
+      where: { id: meetingId },
+      data: {
+        title: result.data.title,
+        meetingTypeId: result.data.meetingTypeId,
+        startsAt: result.data.startsAt,
+        isOnline: result.data.isOnline,
+        location: result.data.location,
+        agendaItems: {
+          deleteMany: { id: { in: toDelete } },
+          update: updateOps,
+          create: createOps,
+        },
       },
-    },
-  });
+    }),
+    ...(resolutionIdsToReset.length
+      ? [
+          prisma.resolution.updateMany({
+            where: { id: { in: resolutionIdsToReset } },
+            data: { status: "DRAFT", openedAt: null, decidedAt: null },
+          }),
+        ]
+      : []),
+  ]);
 
   revalidateMeeting(meetingId);
+  resolutionIdsToReset.forEach(revalidateResolutionViews);
   return { ok: true };
 }
 
@@ -226,6 +252,8 @@ export async function decideAgendaItem(
     select: {
       meetingId: true,
       status: true,
+      resolutionId: true,
+      _count: { select: { votes: true } },
       meeting: { select: { organizationId: true, endedAt: true } },
     },
   });
@@ -244,8 +272,40 @@ export async function decideAgendaItem(
     );
   }
 
-  await prisma.agendaItem.update({ where: { id: itemId }, data: { status } });
+  // Po oddaniu pierwszego głosu nad uchwałą nie można już cofnąć/zamknąć głosowania.
+  if (
+    item.resolutionId &&
+    item.status === "APPROVED" &&
+    status !== "APPROVED" &&
+    item._count.votes > 0
+  ) {
+    throw new Error(
+      "Nie można cofnąć głosowania — oddano już głosy nad tą uchwałą.",
+    );
+  }
+
+  // Punkt-uchwała: status uchwały śledzi bramkę głosowania na spotkaniu.
+  //  • zatwierdzenie punktu (APPROVED) → otwarcie głosowania (VOTING),
+  //  • cofnięcie do „Do rozpatrzenia" (PENDING) → z powrotem „Oczekuje na spotkanie",
+  //  • odrzucenie punktu (REJECTED) → uchwała odrzucona.
+  const ops: Prisma.PrismaPromise<unknown>[] = [
+    prisma.agendaItem.update({ where: { id: itemId }, data: { status } }),
+  ];
+  if (item.resolutionId) {
+    const now = new Date();
+    const data =
+      status === "APPROVED"
+        ? { status: "VOTING" as const, openedAt: now, decidedAt: null }
+        : status === "REJECTED"
+          ? { status: "REJECTED" as const, decidedAt: now }
+          : { status: "AWAITING_MEETING" as const, openedAt: null, decidedAt: null };
+    ops.push(
+      prisma.resolution.update({ where: { id: item.resolutionId }, data }),
+    );
+  }
+  await prisma.$transaction(ops);
   revalidateMeeting(item.meetingId);
+  if (item.resolutionId) revalidateResolutionViews(item.resolutionId);
 }
 
 // Odnotowuje obecność / nieobecność członka na spotkaniu. MEETINGS WRITE.
@@ -282,27 +342,89 @@ export async function setAttendance(
 }
 
 // Zamyka spotkanie (zapisuje moment zakończenia). MEETINGS WRITE.
+// Zakończenie zamyka też głosowanie nad uchwałami będącymi w porządku obrad —
+// każdą uchwałę w trakcie głosowania (punkt zatwierdzony) rozstrzygamy z oddanych
+// głosów i progu jej typu: Przyjęta / Odrzucona.
 export async function endMeeting(meetingId: string) {
   const meeting = await prisma.meeting.findUnique({
     where: { id: meetingId },
-    select: { organizationId: true },
+    select: {
+      organizationId: true,
+      meetingType: { select: { roles: { select: { roleId: true } } } },
+      agendaItems: {
+        where: { resolutionId: { not: null }, status: "APPROVED" },
+        select: {
+          resolutionId: true,
+          votes: { select: { choice: true } },
+          resolution: {
+            select: { resolutionType: { select: { voteThreshold: true } } },
+          },
+        },
+      },
+    },
   });
   if (!meeting) throw new Error("Spotkanie nie istnieje.");
 
   await requireMember(meeting.organizationId, "MEETINGS", "WRITE");
 
-  await prisma.meeting.update({
-    where: { id: meetingId },
-    data: { endedAt: new Date() },
+  // Uprawnieni do głosowania na tym spotkaniu (mianownik progu) — rola z prawem
+  // głosu i dopuszczona przez typ spotkania (pusta lista ról = wszyscy członkowie).
+  const allowedRoleIds = meeting.meetingType.roles.map((r) => r.roleId);
+  const eligibleCount = await prisma.member.count({
+    where: {
+      organizationId: meeting.organizationId,
+      role: { is: { canVote: true } },
+      ...(allowedRoleIds.length ? { roleId: { in: allowedRoleIds } } : {}),
+    },
   });
+
+  const now = new Date();
+  const ops: Prisma.PrismaPromise<unknown>[] = [
+    prisma.meeting.update({ where: { id: meetingId }, data: { endedAt: now } }),
+  ];
+  const decidedResolutionIds: string[] = [];
+  for (const item of meeting.agendaItems) {
+    if (!item.resolutionId) continue;
+    const outcome = voteOutcome(
+      tallyVotes(item.votes),
+      item.resolution?.resolutionType?.voteThreshold ?? null,
+      eligibleCount,
+    );
+    ops.push(
+      prisma.resolution.update({
+        where: { id: item.resolutionId },
+        data: { status: outcome, decidedAt: now },
+      }),
+    );
+    decidedResolutionIds.push(item.resolutionId);
+  }
+  await prisma.$transaction(ops);
+
   revalidateMeeting(meetingId);
+  decidedResolutionIds.forEach(revalidateResolutionViews);
 }
 
 // Wznawia zakończone spotkanie (czyści moment zakończenia). Tylko rola Prezes.
+// Wznowienie ponownie otwiera głosowanie nad rozstrzygniętymi (a niepodpisanymi)
+// uchwałami z porządku obrad — wracają do stanu „W głosowaniu".
 export async function reopenMeeting(meetingId: string) {
   const meeting = await prisma.meeting.findUnique({
     where: { id: meetingId },
-    select: { organizationId: true },
+    select: {
+      organizationId: true,
+      agendaItems: {
+        where: { resolutionId: { not: null }, status: "APPROVED" },
+        select: {
+          resolutionId: true,
+          resolution: {
+            select: {
+              status: true,
+              _count: { select: { signatures: true } },
+            },
+          },
+        },
+      },
+    },
   });
   if (!meeting) throw new Error("Spotkanie nie istnieje.");
 
@@ -311,11 +433,30 @@ export async function reopenMeeting(meetingId: string) {
     throw new Error("Tylko Prezes może wznowić zakończone spotkanie.");
   }
 
-  await prisma.meeting.update({
-    where: { id: meetingId },
-    data: { endedAt: null },
-  });
+  const ops: Prisma.PrismaPromise<unknown>[] = [
+    prisma.meeting.update({ where: { id: meetingId }, data: { endedAt: null } }),
+  ];
+  const reopenedResolutionIds: string[] = [];
+  for (const item of meeting.agendaItems) {
+    if (!item.resolutionId || !item.resolution) continue;
+    const decided =
+      item.resolution.status === "PASSED" ||
+      item.resolution.status === "REJECTED";
+    // Podpisanej uchwały nie cofamy — pozostaje rozstrzygnięta.
+    if (decided && item.resolution._count.signatures === 0) {
+      ops.push(
+        prisma.resolution.update({
+          where: { id: item.resolutionId },
+          data: { status: "VOTING", decidedAt: null },
+        }),
+      );
+      reopenedResolutionIds.push(item.resolutionId);
+    }
+  }
+  await prisma.$transaction(ops);
+
   revalidateMeeting(meetingId);
+  reopenedResolutionIds.forEach(revalidateResolutionViews);
 }
 
 // ─── Komentarze do punktów porządku obrad ─────────────────────────────────

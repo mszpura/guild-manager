@@ -70,6 +70,14 @@ export default async function ResolutionsPage({
         openedAt: true,
         decidedAt: true,
         votes: { select: { choice: true } },
+        // Uchwały głosowane na spotkaniu mają głosy na punkcie porządku obrad —
+        // wynik pokazujemy po zakończeniu spotkania (gdy punkt poddano głosowaniu).
+        agendaItem: {
+          select: {
+            meeting: { select: { endedAt: true } },
+            votes: { select: { choice: true } },
+          },
+        },
       },
     }),
     prisma.member.count({ where: { organizationId: orgId } }),
@@ -185,8 +193,17 @@ export default async function ResolutionsPage({
               </p>
             ) : (
               rows.map((r) => {
-                const date =
-                  r.status === "DRAFT"
+                // Wynik (pasek i data) ujawniamy po rozstrzygnięciu. Uchwała na
+                // spotkaniu ma głosy na punkcie porządku obrad; online — własne.
+                const meetingItem = r.agendaItem;
+                const decided = r.status === "PASSED" || r.status === "REJECTED";
+                const barVotes = meetingItem ? meetingItem.votes : r.votes;
+                const revealBar = meetingItem ? decided : r.status !== "DRAFT";
+                const date = meetingItem
+                  ? decided
+                    ? (r.decidedAt ?? meetingItem.meeting.endedAt)
+                    : null
+                  : r.status === "DRAFT"
                     ? null
                     : (r.decidedAt ?? r.openedAt);
                 return (
@@ -209,15 +226,17 @@ export default async function ResolutionsPage({
                       {date ? dateFmt.format(date) : "—"}
                     </span>
                     <VoteCell
-                      votes={r.votes}
+                      votes={barVotes}
                       memberCount={memberCount}
-                      hasVote={r.status !== "DRAFT"}
+                      hasVote={revealBar}
                     />
                     <span>
                       <span
                         className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${RESOLUTION_STATUS_BADGE[r.status]}`}
                       >
-                        {RESOLUTION_STATUS_LABELS[r.status]}
+                        {r.status === "AWAITING_MEETING"
+                          ? "Oczekuje"
+                          : RESOLUTION_STATUS_LABELS[r.status]}
                       </span>
                     </span>
                     <div className="flex justify-end">

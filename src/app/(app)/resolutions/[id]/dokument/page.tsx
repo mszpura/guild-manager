@@ -79,6 +79,30 @@ export default async function ResolutionDocumentPage({
             },
           },
         },
+        // Uchwała głosowana na spotkaniu — głosy i frekwencja pochodzą z punktu
+        // porządku obrad (nie z głosowania online).
+        agendaItem: {
+          select: {
+            meeting: {
+              select: {
+                meetingType: { select: { roles: { select: { roleId: true } } } },
+              },
+            },
+            votes: {
+              orderBy: { createdAt: "asc" },
+              select: {
+                choice: true,
+                member: {
+                  select: {
+                    firstName: true,
+                    lastName: true,
+                    role: { select: { name: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     }),
     // Uprawnieni do głosowania = członkowie z dostępem WRITE do Uchwał (frekwencja).
@@ -99,14 +123,29 @@ export default async function ResolutionDocumentPage({
   const signatureByRole = new Map(
     resolution.signatures.map((s) => [s.role, s.signerName]),
   );
-  const tally = tallyVotes(resolution.votes);
+  // Uchwała głosowana na spotkaniu — głosy z punktu porządku obrad; inaczej online.
+  const meetingItem = resolution.agendaItem;
+  const voteRows = meetingItem ? meetingItem.votes : resolution.votes;
+  const tally = tallyVotes(voteRows);
   const castCount = tally.FOR + tally.AGAINST + tally.ABSTAIN;
-  const eligibleCount = voters.filter((m) =>
-    can(m.role, "RESOLUTIONS", "WRITE"),
-  ).length;
+  // Frekwencja: dla głosowania na spotkaniu uprawnieni wynikają z typu spotkania
+  // (rola z prawem głosu), inaczej — dostęp WRITE do Uchwał.
+  const meetingAllowedRoleIds =
+    meetingItem?.meeting.meetingType.roles.map((r) => r.roleId) ?? [];
+  const eligibleCount = meetingItem
+    ? await prisma.member.count({
+        where: {
+          organizationId: orgId,
+          role: { is: { canVote: true } },
+          ...(meetingAllowedRoleIds.length
+            ? { roleId: { in: meetingAllowedRoleIds } }
+            : {}),
+        },
+      })
+    : voters.filter((m) => can(m.role, "RESOLUTIONS", "WRITE")).length;
   const date = resolution.decidedAt ?? resolution.openedAt;
   const passed = resolution.status === "PASSED";
-  const showVoters = !resolution.secretBallot && resolution.votes.length > 0;
+  const showVoters = !resolution.secretBallot && voteRows.length > 0;
 
   // Szerokości segmentów paska wyniku (udział w oddanych głosach).
   const pct = (n: number) => (castCount > 0 ? (n / castCount) * 100 : 0);
@@ -271,7 +310,7 @@ export default async function ResolutionDocumentPage({
                 </tr>
               </thead>
               <tbody>
-                {resolution.votes.map((v, i) => (
+                {voteRows.map((v, i) => (
                   <tr
                     key={i}
                     className="border-b border-[#eef1f7] last:border-0 odd:bg-[#fafbfd]"
