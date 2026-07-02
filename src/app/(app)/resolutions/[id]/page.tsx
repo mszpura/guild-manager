@@ -9,6 +9,7 @@ import {
   tallyVotes,
 } from "@/lib/resolutions";
 import { ResolutionFormDialog } from "@/components/resolution-form-dialog";
+import { AddResolutionToMeeting } from "@/components/resolution-meeting-controls";
 import {
   ResolutionVoteButtons,
   ResolutionStatusControls,
@@ -66,6 +67,17 @@ export default async function ResolutionDetailPage({
           orderBy: { signedAt: "asc" },
           select: { role: true, signerName: true, memberId: true },
         },
+        // Punkt porządku obrad, na którym uchwała jest głosowana (typ „na spotkaniu").
+        agendaItem: {
+          select: {
+            id: true,
+            status: true,
+            meeting: {
+              select: { id: true, title: true, startsAt: true, endedAt: true },
+            },
+            votes: { select: { choice: true } },
+          },
+        },
       },
     }),
     // Uprawnieni do głosowania = członkowie z dostępem do panelu Uchwały w trybie
@@ -119,6 +131,18 @@ export default async function ResolutionDetailPage({
   const showVoters = !resolution.secretBallot;
   // Typ wymagający głosowania na spotkaniu — głosowanie online na razie wyłączone.
   const requiresMeeting = resolution.resolutionType?.requiresMeeting ?? false;
+  const meetingItem = resolution.agendaItem;
+  // Nadchodzące (niezakończone) spotkania do wyboru — tylko gdy uchwałę można
+  // jeszcze dodać (typ „na spotkaniu", szkic, nieprzypisana) i użytkownik zarządza.
+  const canAddToMeeting =
+    requiresMeeting && isDraft && !meetingItem && isManager;
+  const upcomingMeetings = canAddToMeeting
+    ? await prisma.meeting.findMany({
+        where: { organizationId: orgId, endedAt: null },
+        orderBy: { startsAt: "asc" },
+        select: { id: true, title: true, startsAt: true },
+      })
+    : [];
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -233,10 +257,47 @@ export default async function ResolutionDetailPage({
         </div>
 
         {requiresMeeting ? (
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            Ten typ uchwały wymaga głosowania na spotkaniu. Głosowanie online jest
-            na razie niedostępne.
-          </p>
+          <div className="space-y-3">
+            <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              Ten typ uchwały wymaga głosowania na spotkaniu. Głosowanie online
+              jest wyłączone — uchwałę głosuje się jako punkt porządku obrad.
+            </p>
+
+            {meetingItem ? (
+              <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+                <p>
+                  Uchwała jest w porządku obrad spotkania:{" "}
+                  <Link
+                    href={`/meetings/${meetingItem.meeting.id}`}
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    {meetingItem.meeting.title}
+                  </Link>{" "}
+                  <span className="text-muted-foreground">
+                    ({dateTimeFmt.format(meetingItem.meeting.startsAt)})
+                  </span>
+                  .
+                </p>
+                {(() => {
+                  const mt = tallyVotes(meetingItem.votes);
+                  return (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Głosy na spotkaniu — {mt.FOR} za, {mt.AGAINST} przeciw,{" "}
+                      {mt.ABSTAIN} wstrzymujących się.
+                    </p>
+                  );
+                })()}
+              </div>
+            ) : canAddToMeeting ? (
+              <AddResolutionToMeeting
+                resolutionId={resolution.id}
+                meetings={upcomingMeetings.map((m) => ({
+                  id: m.id,
+                  label: `${m.title} — ${dateTimeFmt.format(m.startsAt)}`,
+                }))}
+              />
+            ) : null}
+          </div>
         ) : isDraft ? (
           <p className="text-sm text-muted-foreground">
             Głosowanie nie zostało jeszcze otwarte.

@@ -76,7 +76,7 @@ export default async function MeetingDetailPage({
           title: true,
           description: true,
           status: true,
-          votable: true,
+          resolutionId: true,
           votes: { select: { memberId: true, choice: true } },
           comments: {
             orderBy: { createdAt: "asc" },
@@ -241,7 +241,6 @@ export default async function MeetingDetailPage({
                   agendaItems: agenda.map((a) => ({
                     id: a.id,
                     title: a.title,
-                    votable: a.votable,
                   })),
                 }}
               />
@@ -363,9 +362,19 @@ export default async function MeetingDetailPage({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-3">
-                        <h4 className="text-[15px] font-bold leading-snug">
-                          {item.title}
-                        </h4>
+                        <div className="min-w-0">
+                          <h4 className="text-[15px] font-bold leading-snug">
+                            {item.title}
+                          </h4>
+                          {item.resolutionId ? (
+                            <Link
+                              href={`/resolutions/${item.resolutionId}`}
+                              className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+                            >
+                              Uchwała — przejdź do szczegółów
+                            </Link>
+                          ) : null}
+                        </div>
                         <AgendaStatusBadge status={item.status} />
                       </div>
                       {item.description ? (
@@ -374,7 +383,7 @@ export default async function MeetingDetailPage({
                         </p>
                       ) : null}
 
-                      {item.votable ? (
+                      {item.resolutionId ? (
                         <AgendaVote
                           itemId={item.id}
                           tally={tally}

@@ -341,3 +341,69 @@ export async function signResolution(
 
   revalidateResolution(resolutionId);
 }
+
+// Dodaje uchwałę do porządku obrad wybranego spotkania jako punkt do głosowania.
+// Dla typów wymagających głosowania na spotkaniu — głosowanie odbywa się wtedy na
+// spotkaniu (jako punkt porządku), nie online. Wymaga RESOLUTIONS WRITE.
+export async function addResolutionToMeeting(
+  resolutionId: string,
+  meetingId: string,
+) {
+  const resolution = await prisma.resolution.findUnique({
+    where: { id: resolutionId },
+    select: {
+      organizationId: true,
+      number: true,
+      title: true,
+      content: true,
+      status: true,
+      resolutionType: { select: { requiresMeeting: true } },
+      agendaItem: { select: { id: true } },
+    },
+  });
+  if (!resolution) throw new Error("Uchwała nie istnieje.");
+
+  await requireMember(resolution.organizationId, "RESOLUTIONS", "WRITE");
+
+  if (!resolution.resolutionType?.requiresMeeting) {
+    throw new Error(
+      "Do spotkania można dodać tylko uchwałę typu wymagającego głosowania na spotkaniu.",
+    );
+  }
+  if (resolution.status !== "DRAFT") {
+    throw new Error("Do spotkania można dodać tylko uchwałę w stanie szkicu.");
+  }
+  if (resolution.agendaItem) {
+    throw new Error("Ta uchwała jest już dodana do spotkania.");
+  }
+
+  // Spotkanie musi należeć do tego samego stowarzyszenia i nie być zakończone.
+  const meeting = await prisma.meeting.findFirst({
+    where: {
+      id: meetingId,
+      organizationId: resolution.organizationId,
+      endedAt: null,
+    },
+    select: { id: true },
+  });
+  if (!meeting) {
+    throw new Error("Wybierz nadchodzące (niezakończone) spotkanie.");
+  }
+
+  // Punkt-uchwała trafia na koniec porządku obrad; jest głosowalny (votable).
+  const count = await prisma.agendaItem.count({ where: { meetingId } });
+  await prisma.agendaItem.create({
+    data: {
+      meetingId,
+      order: count,
+      title: `Uchwała nr ${resolution.number}: ${resolution.title}`,
+      description: resolution.content,
+      votable: true,
+      resolutionId,
+    },
+  });
+
+  revalidateResolution(resolutionId);
+  revalidatePath("/meetings");
+  revalidatePath(`/meetings/${meetingId}`);
+}

@@ -33,7 +33,7 @@ const meetingSelect = {
   location: true,
   endedAt: true,
   agendaItems: {
-    select: { id: true, title: true, votable: true },
+    select: { id: true, title: true },
     orderBy: { order: "asc" },
   },
   createdBy: { select: { firstName: true, lastName: true } },
@@ -132,7 +132,6 @@ export default async function MeetingsPage() {
               agendaItems: m.agendaItems.map((a) => ({
                 id: a.id,
                 title: a.title,
-                votable: a.votable,
               })),
             }
           : null,

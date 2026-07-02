@@ -397,6 +397,12 @@ model AgendaItem {
   status      AgendaItemStatus @default(PENDING)
   votable     Boolean          @default(true) // czy punkt podlega głosowaniu
 
+  // Uchwała reprezentowana przez ten punkt. Tylko punkty-uchwały podlegają
+  // głosowaniu członków (pozostałe są informacyjne). Unikat: dana uchwała trafia
+  // najwyżej do jednego porządku obrad. Usunięcie uchwały kasuje jej punkt.
+  resolution   Resolution? @relation(fields: [resolutionId], references: [id], onDelete: Cascade)
+  resolutionId String?     @unique
+
   comments AgendaComment[]
   votes    AgendaVote[]
 
@@ -496,6 +502,10 @@ model Resolution {
 
   votes      ResolutionVote[]
   signatures ResolutionSignature[]
+
+  // Punkt porządku obrad, na którym uchwała jest głosowana (dla typów wymagających
+  // głosowania na spotkaniu). null = niedodana do żadnego spotkania.
+  agendaItem AgendaItem?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -20,8 +20,9 @@ import {
 
 type MeetingTypeOption = { id: string; name: string };
 
-// Punkt porządku obrad w formularzu. `id` puste = nowy punkt.
-type AgendaRow = { id: string; title: string; votable: boolean };
+// Punkt porządku obrad w formularzu. `id` puste = nowy punkt. Ręczne punkty są
+// informacyjne — głosowalne są tylko punkty-uchwały (dodawane z widoku uchwały).
+type AgendaRow = { id: string; title: string };
 
 export type MeetingFormValues = {
   id: string;
@@ -61,16 +62,11 @@ export function MeetingFormDialog({
       items.map((it, i) => (i === index ? { ...it, title: value } : it)),
     );
   }
-  function toggleVotable(index: number) {
-    setAgenda((items) =>
-      items.map((it, i) => (i === index ? { ...it, votable: !it.votable } : it)),
-    );
-  }
   function removeAgenda(index: number) {
     setAgenda((items) => items.filter((_, i) => i !== index));
   }
   function addAgenda() {
-    setAgenda((items) => [...items, { id: "", title: "", votable: true }]);
+    setAgenda((items) => [...items, { id: "", title: "" }]);
   }
 
   function submit(formData: FormData) {
@@ -200,6 +196,10 @@ export function MeetingFormDialog({
 
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">Porządek obrad</legend>
+            <p className="text-xs text-muted-foreground">
+              Punkty porządku są informacyjne. Głosowaniu podlegają wyłącznie
+              uchwały — dodasz je do spotkania z widoku uchwały.
+            </p>
             {agenda.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 Brak punktów. Dodaj pierwszy punkt porządku obrad.
@@ -212,11 +212,6 @@ export function MeetingFormDialog({
                       {i + 1}.
                     </span>
                     <input type="hidden" name="agendaItemIds" value={item.id} />
-                    <input
-                      type="hidden"
-                      name="agendaItemVotable"
-                      value={item.votable ? "1" : "0"}
-                    />
                     <Input
                       name="agendaItems"
                       value={item.title}
@@ -224,18 +219,6 @@ export function MeetingFormDialog({
                       placeholder="np. Sprawozdanie zarządu za 2025"
                       className="min-w-0 flex-1"
                     />
-                    <label
-                      className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
-                      title="Czy punkt podlega głosowaniu"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={item.votable}
-                        onChange={() => toggleVotable(i)}
-                        className="size-4 rounded border-input"
-                      />
-                      Głosowanie
-                    </label>
                     <Button
                       type="button"
                       variant="ghost"

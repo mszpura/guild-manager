@@ -48,17 +48,16 @@ function parseMeetingFields(formData: FormData) {
   });
 }
 
-// Porządek obrad: równoległe pola `agendaItemIds`, `agendaItems`, `agendaItemVotable`
-// (po jednym na wiersz). Id puste = nowy punkt. Puste tytuły pomijamy (zachowując
-// wyrównanie indeksów). `agendaItemVotable` jest polem ukrytym ("1"/"0"), więc każdy
-// wiersz wnosi dokładnie jedną wartość — indeksy pozostają wyrównane.
-type AgendaInput = { id: string | null; title: string; votable: boolean };
+// Porządek obrad: równoległe pola `agendaItemIds`, `agendaItems` (po jednym na
+// wiersz). Id puste = nowy punkt. Puste tytuły pomijamy (zachowując wyrównanie
+// indeksów). Głosowaniu podlegają wyłącznie punkty-uchwały (dodawane osobno,
+// z widoku uchwały) — ręczne punkty porządku są informacyjne.
+type AgendaInput = { id: string | null; title: string };
 function parseAgenda(
   formData: FormData,
 ): { ok: true; items: AgendaInput[] } | { ok: false; error: string } {
   const ids = formData.getAll("agendaItemIds").map(String);
   const titles = formData.getAll("agendaItems").map(String);
-  const votable = formData.getAll("agendaItemVotable").map(String);
   const items: AgendaInput[] = [];
   for (let i = 0; i < titles.length; i++) {
     const result = agendaItemSchema.safeParse(titles[i]);
@@ -69,7 +68,6 @@ function parseAgenda(
     items.push({
       id: ids[i] ? ids[i] : null,
       title: result.data,
-      votable: votable[i] !== "0",
     });
   }
   return { ok: true, items };
@@ -106,10 +104,12 @@ export async function createMeeting(
       // Organizatorem jest członek, który zwołał spotkanie.
       createdById: me.id,
       agendaItems: {
+        // Ręczne punkty porządku są informacyjne (nie podlegają głosowaniu) —
+        // głosowalne są tylko punkty-uchwały dodawane z widoku uchwały.
         create: agenda.items.map((it, i) => ({
           order: i,
           title: it.title,
-          votable: it.votable,
+          votable: false,
         })),
       },
     },
@@ -166,12 +166,14 @@ export async function updateMeeting(
   const createOps: Prisma.AgendaItemCreateWithoutMeetingInput[] = [];
   agenda.items.forEach((it, i) => {
     if (it.id && existingIds.has(it.id)) {
+      // Nie ruszamy `votable` ani powiązania z uchwałą — zachowujemy je dla
+      // istniejących punktów (w tym punktów-uchwał, które są głosowalne).
       updateOps.push({
         where: { id: it.id },
-        data: { title: it.title, order: i, votable: it.votable },
+        data: { title: it.title, order: i },
       });
     } else {
-      createOps.push({ order: i, title: it.title, votable: it.votable });
+      createOps.push({ order: i, title: it.title, votable: false });
     }
   });
   const keptIds = new Set(updateOps.map((op) => op.where.id));
@@ -375,6 +377,7 @@ export async function castVote(itemId: string, choice: VoteChoice) {
     select: {
       meetingId: true,
       votable: true,
+      resolutionId: true,
       status: true,
       meeting: {
         select: {
@@ -394,8 +397,10 @@ export async function castVote(itemId: string, choice: VoteChoice) {
 
   const me = await requireMember(item.meeting.organizationId, "MEETINGS", "READ");
 
-  if (!item.votable) {
-    throw new Error("Ten punkt porządku obrad nie podlega głosowaniu.");
+  // Głosowaniu podlegają wyłącznie punkty będące uchwałami. Pozostałe punkty
+  // porządku obrad są informacyjne.
+  if (!item.resolutionId) {
+    throw new Error("Głosować można wyłącznie nad punktami będącymi uchwałami.");
   }
 
   if (item.meeting.endedAt !== null) {
