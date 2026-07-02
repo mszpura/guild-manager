@@ -74,9 +74,15 @@ export default async function ResolutionDetailPage({
             id: true,
             status: true,
             meeting: {
-              select: { id: true, title: true, startsAt: true, endedAt: true },
+              select: {
+                id: true,
+                title: true,
+                startsAt: true,
+                endedAt: true,
+                meetingType: { select: { roles: { select: { roleId: true } } } },
+              },
             },
-            votes: { select: { choice: true } },
+            votes: { select: { memberId: true, choice: true } },
           },
         },
       },
@@ -147,6 +153,33 @@ export default async function ResolutionDetailPage({
         select: { id: true, title: true, startsAt: true },
       })
     : [];
+
+  // Głosowanie na spotkaniu — dane do panelu wyniku (w stylu głosowania online).
+  const meetingEnded = meetingItem?.meeting.endedAt != null;
+  const meetingTally = tallyVotes(meetingItem?.votes ?? []);
+  const meetingCast = meetingTally.FOR + meetingTally.AGAINST + meetingTally.ABSTAIN;
+  const myMeetingChoice =
+    meetingItem?.votes.find((v) => v.memberId === me.id)?.choice ?? null;
+  // Liczba uprawnionych do głosowania na tym spotkaniu (rola z prawem głosu oraz
+  // dopuszczona przez typ spotkania) — mianownik frekwencji na pasku.
+  const meetingAllowedRoleIds =
+    meetingItem?.meeting.meetingType.roles.map((r) => r.roleId) ?? [];
+  const meetingEligibleCount = meetingItem
+    ? await prisma.member.count({
+        where: {
+          organizationId: orgId,
+          role: { is: { canVote: true } },
+          ...(meetingAllowedRoleIds.length
+            ? { roleId: { in: meetingAllowedRoleIds } }
+            : {}),
+        },
+      })
+    : 0;
+  // Wynik wyznaczamy z głosów oddanych na spotkaniu i progu z typu uchwały —
+  // tylko gdy punkt poddano pod głosowanie (APPROVED) i spotkanie się zakończyło.
+  const meetingPassed =
+    voteOutcome(meetingTally, resolution.resolutionType?.voteThreshold ?? null) ===
+    "PASSED";
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -253,7 +286,9 @@ export default async function ResolutionDetailPage({
           <h2 className="font-heading text-base font-bold">Głosowanie</h2>
           <span className="text-xs text-muted-foreground">
             {requiresMeeting
-              ? "Na spotkaniu"
+              ? meetingItem && meetingEnded
+                ? `${meetingCast} z ${meetingEligibleCount} głosów`
+                : "Na spotkaniu"
               : isDraft
                 ? "Nieotwarte"
                 : `${castCount} z ${eligibleCount} głosów`}
@@ -267,75 +302,62 @@ export default async function ResolutionDetailPage({
               jest wyłączone — uchwałę głosuje się jako punkt porządku obrad.
             </p>
 
-            {meetingItem ? (() => {
-              const meetingEnded = meetingItem.meeting.endedAt !== null;
-              const mt = tallyVotes(meetingItem.votes);
-              const link = (
-                <Link
-                  href={`/meetings/${meetingItem.meeting.id}`}
-                  className="font-semibold text-primary hover:underline"
-                >
-                  {meetingItem.meeting.title}
-                </Link>
-              );
+            {meetingItem ? (
+              <div className="space-y-3">
+                <p className="text-sm">
+                  {meetingEnded
+                    ? "Głosowano na spotkaniu:"
+                    : "W porządku obrad spotkania:"}{" "}
+                  <Link
+                    href={`/meetings/${meetingItem.meeting.id}`}
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    {meetingItem.meeting.title}
+                  </Link>{" "}
+                  <span className="text-muted-foreground">
+                    ({dateTimeFmt.format(meetingItem.meeting.startsAt)})
+                  </span>
+                  .
+                </p>
 
-              // Głosowanie na spotkaniu trwa — wynik ujawniamy dopiero po zakończeniu.
-              if (!meetingEnded) {
-                return (
-                  <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
-                    <p>
-                      Uchwała jest w porządku obrad spotkania: {link}{" "}
-                      <span className="text-muted-foreground">
-                        ({dateTimeFmt.format(meetingItem.meeting.startsAt)})
-                      </span>
-                      .
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Wynik pojawi się po zakończeniu spotkania.
-                    </p>
-                  </div>
-                );
-              }
+                {/* Panel wyniku w tym samym stylu co głosowanie online — nieaktywny
+                    (głos oddaje się na spotkaniu), wynik ujawniany po zakończeniu. */}
+                <ResolutionVoteButtons
+                  resolutionId={resolution.id}
+                  tally={meetingTally}
+                  myChoice={myMeetingChoice}
+                  canVote={false}
+                  eligibleCount={meetingEligibleCount}
+                  showResults={meetingEnded}
+                />
 
-              // Spotkanie zakończone i punkt poddano pod głosowanie — pokazujemy wynik
-              // wyznaczony z głosów oraz progu typu uchwały.
-              if (meetingItem.status === "APPROVED") {
-                const passed =
-                  voteOutcome(
-                    mt,
-                    resolution.resolutionType?.voteThreshold ?? null,
-                  ) === "PASSED";
-                return (
-                  <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
-                    <p>Głosowano na spotkaniu: {link}.</p>
-                    <p className="mt-1">
-                      Wynik:{" "}
-                      <strong
-                        className={
-                          passed ? "text-emerald-700" : "text-destructive"
-                        }
-                      >
-                        {passed ? "Przyjęta" : "Odrzucona"}
-                      </strong>{" "}
-                      ({mt.FOR} za, {mt.AGAINST} przeciw, {mt.ABSTAIN}{" "}
-                      wstrzymujących się).
-                    </p>
-                  </div>
-                );
-              }
-
-              // Zakończone, ale punktu nie poddano pod głosowanie (lub odrzucono go).
-              return (
-                <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                  <p>
-                    {meetingItem.status === "REJECTED"
-                      ? "Punkt uchwały został odrzucony na spotkaniu — nie przeprowadzono głosowania"
-                      : "Uchwały nie poddano pod głosowanie na spotkaniu"}{" "}
-                    ({link}).
+                {!meetingEnded ? (
+                  <p className="text-sm text-muted-foreground">
+                    Głos oddaje się na spotkaniu. Wynik pojawi się po jego
+                    zakończeniu.
                   </p>
-                </div>
-              );
-            })() : canAddToMeeting ? (
+                ) : meetingItem.status === "APPROVED" ? (
+                  <p className="text-sm">
+                    Wynik:{" "}
+                    <strong
+                      className={
+                        meetingPassed ? "text-emerald-700" : "text-destructive"
+                      }
+                    >
+                      {meetingPassed ? "Przyjęta" : "Odrzucona"}
+                    </strong>{" "}
+                    ({meetingTally.FOR} za, {meetingTally.AGAINST} przeciw,{" "}
+                    {meetingTally.ABSTAIN} wstrzymujących się).
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    {meetingItem.status === "REJECTED"
+                      ? "Punkt uchwały został odrzucony na spotkaniu — nie przeprowadzono głosowania."
+                      : "Uchwały nie poddano pod głosowanie na spotkaniu."}
+                  </p>
+                )}
+              </div>
+            ) : canAddToMeeting ? (
               <AddResolutionToMeeting
                 resolutionId={resolution.id}
                 meetings={upcomingMeetings.map((m) => ({
