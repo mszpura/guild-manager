@@ -223,7 +223,13 @@ export async function closeResolutionVoting(resolutionId: string) {
   );
   await prisma.resolution.update({
     where: { id: resolutionId },
-    data: { status: outcome, decidedAt: new Date() },
+    // Zamrażamy liczbę uprawnionych z chwili rozstrzygnięcia — to ona jest odtąd
+    // mianownikiem pasków wyniku (późniejsze zmiany członkostwa jej nie ruszą).
+    data: {
+      status: outcome,
+      decidedAt: new Date(),
+      decidedEligibleCount: eligibleCount,
+    },
   });
   revalidateResolution(resolutionId);
 }
@@ -253,7 +259,12 @@ export async function reopenResolutionDraft(resolutionId: string) {
     prisma.resolutionVote.deleteMany({ where: { resolutionId } }),
     prisma.resolution.update({
       where: { id: resolutionId },
-      data: { status: "DRAFT", openedAt: null, decidedAt: null },
+      data: {
+        status: "DRAFT",
+        openedAt: null,
+        decidedAt: null,
+        decidedEligibleCount: null,
+      },
     }),
   ]);
   revalidateResolution(resolutionId);

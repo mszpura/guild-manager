@@ -523,6 +523,12 @@ model Resolution {
   openedAt DateTime? // moment otwarcia głosowania
   decidedAt DateTime? // moment rozstrzygnięcia (przyjęcia/odrzucenia)
 
+  // Migawka liczby uprawnionych do głosowania w chwili rozstrzygnięcia — mianownik
+  // pasków wyniku. Zamrożona, aby późniejsze zmiany członkostwa (np. dopisanie
+  // członka z prawem głosu) nie zmieniały wstecznie maksymalnej liczby głosujących.
+  // null = jeszcze nierozstrzygnięta (mianownik liczony dynamicznie).
+  decidedEligibleCount Int?
+
   votes      ResolutionVote[]
   signatures ResolutionSignature[]
 

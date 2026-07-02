@@ -69,6 +69,7 @@ export default async function ResolutionsPage({
         status: true,
         openedAt: true,
         decidedAt: true,
+        decidedEligibleCount: true,
         votes: { select: { choice: true } },
         // Uchwały głosowane na spotkaniu mają głosy na punkcie porządku obrad —
         // wynik pokazujemy po zakończeniu spotkania (gdy punkt poddano głosowaniu).
@@ -225,11 +226,19 @@ export default async function ResolutionsPage({
                 const barVotes = meetingItem ? meetingItem.votes : r.votes;
                 const revealBar = meetingItem ? decided : r.status !== "DRAFT";
                 // Mianownik paska = liczba uprawnionych (spójnie z progiem/wynikiem).
-                const eligibleCount = meetingItem
-                  ? meetingEligibleCount(
-                      meetingItem.meeting.meetingType.roles.map((x) => x.roleId),
-                    )
-                  : onlineEligibleCount;
+                // Po rozstrzygnięciu bierzemy zamrożoną migawkę z chwili zamknięcia,
+                // aby późniejsze zmiany członkostwa nie zmieniały paska wstecznie
+                // (fallback do liczby bieżącej dla uchwał sprzed jej wprowadzenia).
+                const eligibleCount =
+                  decided && r.decidedEligibleCount != null
+                    ? r.decidedEligibleCount
+                    : meetingItem
+                      ? meetingEligibleCount(
+                          meetingItem.meeting.meetingType.roles.map(
+                            (x) => x.roleId,
+                          ),
+                        )
+                      : onlineEligibleCount;
                 const date = meetingItem
                   ? decided
                     ? (r.decidedAt ?? meetingItem.meeting.endedAt)

@@ -34,6 +34,21 @@ function revalidateResolutionViews(resolutionId: string) {
   revalidatePath(`/resolutions/${resolutionId}/dokument`);
 }
 
+// Liczba uprawnionych do głosowania na spotkaniu (mianownik progu i pasków wyniku):
+// rola z prawem głosu i dopuszczona przez typ spotkania (pusta lista ról = wszyscy).
+async function meetingEligibleVoterCount(
+  organizationId: string,
+  allowedRoleIds: string[],
+): Promise<number> {
+  return prisma.member.count({
+    where: {
+      organizationId,
+      role: { is: { canVote: true } },
+      ...(allowedRoleIds.length ? { roleId: { in: allowedRoleIds } } : {}),
+    },
+  });
+}
+
 // Sprawdza, że wskazany typ spotkania należy do stowarzyszenia.
 async function meetingTypeBelongsToOrg(
   organizationId: string,
@@ -260,7 +275,13 @@ export async function decideAgendaItem(
       status: true,
       resolutionId: true,
       _count: { select: { votes: true } },
-      meeting: { select: { organizationId: true, endedAt: true } },
+      meeting: {
+        select: {
+          organizationId: true,
+          endedAt: true,
+          meetingType: { select: { roles: { select: { roleId: true } } } },
+        },
+      },
     },
   });
   if (!item) throw new Error("Punkt porządku obrad nie istnieje.");
@@ -299,12 +320,32 @@ export async function decideAgendaItem(
   ];
   if (item.resolutionId) {
     const now = new Date();
+    // Odrzucenie punktu rozstrzyga uchwałę — zamrażamy wtedy liczbę uprawnionych
+    // do głosowania na spotkaniu (mianownik pasków wyniku). Otwarcie/cofnięcie
+    // głosowania czyści migawkę (uchwała wraca do stanu nierozstrzygniętego).
     const data =
       status === "APPROVED"
-        ? { status: "VOTING" as const, openedAt: now, decidedAt: null }
+        ? {
+            status: "VOTING" as const,
+            openedAt: now,
+            decidedAt: null,
+            decidedEligibleCount: null,
+          }
         : status === "REJECTED"
-          ? { status: "REJECTED" as const, decidedAt: now }
-          : { status: "AWAITING_MEETING" as const, openedAt: null, decidedAt: null };
+          ? {
+              status: "REJECTED" as const,
+              decidedAt: now,
+              decidedEligibleCount: await meetingEligibleVoterCount(
+                item.meeting.organizationId,
+                item.meeting.meetingType.roles.map((r) => r.roleId),
+              ),
+            }
+          : {
+              status: "AWAITING_MEETING" as const,
+              openedAt: null,
+              decidedAt: null,
+              decidedEligibleCount: null,
+            };
     ops.push(
       prisma.resolution.update({ where: { id: item.resolutionId }, data }),
     );
@@ -386,14 +427,10 @@ export async function endMeeting(meetingId: string) {
 
   // Uprawnieni do głosowania na tym spotkaniu (mianownik progu) — rola z prawem
   // głosu i dopuszczona przez typ spotkania (pusta lista ról = wszyscy członkowie).
-  const allowedRoleIds = meeting.meetingType.roles.map((r) => r.roleId);
-  const eligibleCount = await prisma.member.count({
-    where: {
-      organizationId: meeting.organizationId,
-      role: { is: { canVote: true } },
-      ...(allowedRoleIds.length ? { roleId: { in: allowedRoleIds } } : {}),
-    },
-  });
+  const eligibleCount = await meetingEligibleVoterCount(
+    meeting.organizationId,
+    meeting.meetingType.roles.map((r) => r.roleId),
+  );
 
   const now = new Date();
   const ops: Prisma.PrismaPromise<unknown>[] = [
@@ -410,7 +447,8 @@ export async function endMeeting(meetingId: string) {
     ops.push(
       prisma.resolution.update({
         where: { id: item.resolutionId },
-        data: { status: outcome, decidedAt: now },
+        // Zamrażamy liczbę uprawnionych z chwili zakończenia spotkania.
+        data: { status: outcome, decidedAt: now, decidedEligibleCount: eligibleCount },
       }),
     );
     decidedResolutionIds.push(item.resolutionId);
@@ -464,7 +502,7 @@ export async function reopenMeeting(meetingId: string) {
       ops.push(
         prisma.resolution.update({
           where: { id: item.resolutionId },
-          data: { status: "VOTING", decidedAt: null },
+          data: { status: "VOTING", decidedAt: null, decidedEligibleCount: null },
         }),
       );
       reopenedResolutionIds.push(item.resolutionId);

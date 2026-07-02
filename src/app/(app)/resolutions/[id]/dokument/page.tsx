@@ -49,6 +49,7 @@ export default async function ResolutionDocumentPage({
         secretBallot: true,
         openedAt: true,
         decidedAt: true,
+        decidedEligibleCount: true,
         organization: {
           select: {
             name: true,
@@ -132,17 +133,23 @@ export default async function ResolutionDocumentPage({
   // (rola z prawem głosu), inaczej — dostęp WRITE do Uchwał.
   const meetingAllowedRoleIds =
     meetingItem?.meeting.meetingType.roles.map((r) => r.roleId) ?? [];
-  const eligibleCount = meetingItem
-    ? await prisma.member.count({
-        where: {
-          organizationId: orgId,
-          role: { is: { canVote: true } },
-          ...(meetingAllowedRoleIds.length
-            ? { roleId: { in: meetingAllowedRoleIds } }
-            : {}),
-        },
-      })
-    : voters.filter((m) => can(m.role, "RESOLUTIONS", "WRITE")).length;
+  // Dokument dotyczy zawsze uchwały rozstrzygniętej — frekwencję bierzemy z
+  // zamrożonej migawki z chwili zamknięcia, aby późniejsze zmiany członkostwa nie
+  // zmieniały jej w dokumencie. Fallback (uchwały sprzed migawki) liczy dynamicznie.
+  const eligibleCount =
+    resolution.decidedEligibleCount != null
+      ? resolution.decidedEligibleCount
+      : meetingItem
+        ? await prisma.member.count({
+            where: {
+              organizationId: orgId,
+              role: { is: { canVote: true } },
+              ...(meetingAllowedRoleIds.length
+                ? { roleId: { in: meetingAllowedRoleIds } }
+                : {}),
+            },
+          })
+        : voters.filter((m) => can(m.role, "RESOLUTIONS", "WRITE")).length;
   const date = resolution.decidedAt ?? resolution.openedAt;
   const passed = resolution.status === "PASSED";
   const showVoters = !resolution.secretBallot && voteRows.length > 0;

@@ -51,6 +51,7 @@ export default async function ResolutionDetailPage({
         secretBallot: true,
         openedAt: true,
         decidedAt: true,
+        decidedEligibleCount: true,
         resolutionTypeId: true,
         resolutionType: {
           select: { name: true, voteThreshold: true, requiresMeeting: true },
@@ -102,6 +103,7 @@ export default async function ResolutionDetailPage({
         firstName: true,
         lastName: true,
         roleId: true,
+        joinedAt: true,
         role: { select: { isOwner: true, permissions: true, canVote: true } },
       },
       orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
@@ -119,11 +121,27 @@ export default async function ResolutionDetailPage({
   ]);
   if (!resolution) notFound();
 
-  // Uprawnieni do głosowania = dostęp do panelu Uchwały (WRITE) i rola z prawem głosu.
+  // Rozstrzygnięta uchwała ma zamrożony skład uprawnionych i mianownik pasków z
+  // chwili rozstrzygnięcia — dopisanie członka z prawem głosu po fakcie nie zmienia
+  // już wyniku ani maksymalnej liczby głosujących.
+  const isDecided =
+    resolution.status === "PASSED" || resolution.status === "REJECTED";
+  const decisionCutoff = isDecided ? resolution.decidedAt : null;
+
+  // Uprawnieni do głosowania = dostęp do panelu Uchwały (WRITE) i rola z prawem
+  // głosu. Po rozstrzygnięciu pomijamy członków dopisanych już po tym momencie.
   const eligibleMembers = voters.filter(
-    (m) => can(m.role, "RESOLUTIONS", "WRITE") && m.role.canVote,
+    (m) =>
+      can(m.role, "RESOLUTIONS", "WRITE") &&
+      m.role.canVote &&
+      (!decisionCutoff || m.joinedAt <= decisionCutoff),
   );
-  const eligibleCount = eligibleMembers.length;
+  // Mianownik pasków: po rozstrzygnięciu — zamrożona migawka (dla uchwał sprzed jej
+  // wprowadzenia fallback do składu bieżącego); w trakcie — liczba bieżąca.
+  const eligibleCount =
+    isDecided && resolution.decidedEligibleCount != null
+      ? resolution.decidedEligibleCount
+      : eligibleMembers.length;
   // Uprawnieni, którzy jeszcze nie oddali głosu (lista pokazywana przy głosowaniu jawnym).
   const votedMemberIds = new Set(resolution.votes.map((v) => v.memberId));
   const notVotedMembers = eligibleMembers.filter(
@@ -138,7 +156,6 @@ export default async function ResolutionDetailPage({
   const castCount = tally.FOR + tally.AGAINST + tally.ABSTAIN;
   const isVoting = resolution.status === "VOTING";
   const isDraft = resolution.status === "DRAFT";
-  const isDecided = resolution.status === "PASSED" || resolution.status === "REJECTED";
   // Dokument PDF dostępny dopiero po zamknięciu głosowania (rozstrzygnięciu).
   const canDownloadPdf = isDecided;
   // Imienne głosy ujawniamy tylko przy głosowaniu jawnym.
@@ -177,10 +194,16 @@ export default async function ResolutionDetailPage({
         (m) =>
           m.role.canVote &&
           (meetingAllowedRoleIds.length === 0 ||
-            meetingAllowedRoleIds.includes(m.roleId)),
+            meetingAllowedRoleIds.includes(m.roleId)) &&
+          (!decisionCutoff || m.joinedAt <= decisionCutoff),
       )
     : [];
-  const meetingEligibleCount = meetingEligibleMembers.length;
+  // Po rozstrzygnięciu mianownik pasków to zamrożona migawka (fallback do składu
+  // bieżącego dla uchwał sprzed jej wprowadzenia).
+  const meetingEligibleCount =
+    isDecided && resolution.decidedEligibleCount != null
+      ? resolution.decidedEligibleCount
+      : meetingEligibleMembers.length;
   // Imienne głosy na spotkaniu (jawne) — kto oddał głos i kto jeszcze nie.
   const meetingVotedIds = new Set(
     (meetingItem?.votes ?? []).map((v) => v.memberId),
