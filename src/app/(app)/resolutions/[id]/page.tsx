@@ -81,7 +81,14 @@ export default async function ResolutionDetailPage({
                 meetingType: { select: { roles: { select: { roleId: true } } } },
               },
             },
-            votes: { select: { memberId: true, choice: true } },
+            votes: {
+              orderBy: { createdAt: "asc" },
+              select: {
+                memberId: true,
+                choice: true,
+                member: { select: { firstName: true, lastName: true } },
+              },
+            },
           },
         },
       },
@@ -94,6 +101,7 @@ export default async function ResolutionDetailPage({
         id: true,
         firstName: true,
         lastName: true,
+        roleId: true,
         role: { select: { isOwner: true, permissions: true, canVote: true } },
       },
       orderBy: [{ firstName: "asc" }, { lastName: "asc" }],
@@ -162,17 +170,24 @@ export default async function ResolutionDetailPage({
   // dopuszczona przez typ spotkania) — mianownik frekwencji na pasku.
   const meetingAllowedRoleIds =
     meetingItem?.meeting.meetingType.roles.map((r) => r.roleId) ?? [];
-  const meetingEligibleCount = meetingItem
-    ? await prisma.member.count({
-        where: {
-          organizationId: orgId,
-          role: { is: { canVote: true } },
-          ...(meetingAllowedRoleIds.length
-            ? { roleId: { in: meetingAllowedRoleIds } }
-            : {}),
-        },
-      })
-    : 0;
+  // Uprawnieni do głosowania na tym spotkaniu (rola z prawem głosu i dopuszczona
+  // przez typ spotkania) — mianownik frekwencji oraz baza listy „nie głosowali".
+  const meetingEligibleMembers = meetingItem
+    ? voters.filter(
+        (m) =>
+          m.role.canVote &&
+          (meetingAllowedRoleIds.length === 0 ||
+            meetingAllowedRoleIds.includes(m.roleId)),
+      )
+    : [];
+  const meetingEligibleCount = meetingEligibleMembers.length;
+  // Imienne głosy na spotkaniu (jawne) — kto oddał głos i kto jeszcze nie.
+  const meetingVotedIds = new Set(
+    (meetingItem?.votes ?? []).map((v) => v.memberId),
+  );
+  const meetingNotVoted = meetingEligibleMembers.filter(
+    (m) => !meetingVotedIds.has(m.id),
+  );
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -354,6 +369,60 @@ export default async function ResolutionDetailPage({
                     prowadzący, zatwierdzając punkt porządku obrad.
                   </p>
                 )}
+
+                {/* imienne głosy z spotkania — tylko przy głosowaniu jawnym,
+                    po rozstrzygnięciu (jak przy głosowaniu online) */}
+                {showVoters && isDecided ? (
+                  <>
+                    {meetingItem.votes.length > 0 ? (
+                      <div className="border-t pt-4">
+                        <p className="mb-2 text-[11px] font-bold tracking-wide text-muted-foreground">
+                          ODDANE GŁOSY · {meetingItem.votes.length}
+                        </p>
+                        <ul className="divide-y">
+                          {meetingItem.votes.map((v) => (
+                            <li
+                              key={v.memberId}
+                              className="flex items-center justify-between gap-3 py-2 text-sm"
+                            >
+                              <span className="font-medium">
+                                {v.member.firstName} {v.member.lastName ?? ""}
+                              </span>
+                              <span
+                                className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${VOTE_BADGE[v.choice]}`}
+                              >
+                                {VOTE_LABEL[v.choice]}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+
+                    {meetingNotVoted.length > 0 ? (
+                      <div className="border-t pt-4">
+                        <p className="mb-2 text-[11px] font-bold tracking-wide text-muted-foreground">
+                          NIE ODDALI GŁOSU · {meetingNotVoted.length}
+                        </p>
+                        <ul className="divide-y">
+                          {meetingNotVoted.map((m) => (
+                            <li
+                              key={m.id}
+                              className="flex items-center justify-between gap-3 py-2 text-sm"
+                            >
+                              <span className="font-medium text-muted-foreground">
+                                {m.firstName} {m.lastName ?? ""}
+                              </span>
+                              <span className="shrink-0 rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                                Nie głosował(a)
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </>
+                ) : null}
               </div>
             ) : canAddToMeeting ? (
               <AddResolutionToMeeting
