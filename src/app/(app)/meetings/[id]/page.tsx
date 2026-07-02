@@ -388,13 +388,17 @@ export default async function MeetingDetailPage({
                           itemId={item.id}
                           tally={tally}
                           myChoice={myChoice}
-                          canVote={votingOpen && item.status !== "REJECTED"}
+                          canVote={votingOpen && item.status === "APPROVED"}
                           note={
-                            eligibleToVote && !ended && !quorumOk
-                              ? `Brak kworum (${quorumPct}%) — głosowanie wstrzymane.`
-                              : item.status === "REJECTED" && !ended
-                                ? "Punkt odrzucony — głosowanie zamknięte."
-                                : undefined
+                            ended
+                              ? undefined
+                              : item.status === "PENDING"
+                                ? "Głosowanie otwiera się po zatwierdzeniu punktu przez prowadzącego."
+                                : item.status === "REJECTED"
+                                  ? "Punkt odrzucony — głosowanie zamknięte."
+                                  : eligibleToVote && !quorumOk
+                                    ? `Brak kworum (${quorumPct}%) — głosowanie wstrzymane.`
+                                    : undefined
                           }
                         />
                       ) : (
@@ -408,6 +412,7 @@ export default async function MeetingDetailPage({
                           itemId={item.id}
                           status={item.status}
                           ended={ended}
+                          isResolution={item.resolutionId !== null}
                         />
                       ) : null}
 

@@ -407,8 +407,13 @@ export async function castVote(itemId: string, choice: VoteChoice) {
     throw new Error("Spotkanie zostało zakończone — głosowanie jest zamknięte.");
   }
 
-  if (item.status === "REJECTED") {
-    throw new Error("Nie można głosować nad odrzuconym punktem.");
+  // Głosowanie nad uchwałą otwiera się dopiero po zatwierdzeniu punktu przez
+  // prowadzącego (status APPROVED). Wcześniej (PENDING) oraz po odrzuceniu głosów
+  // nie przyjmujemy.
+  if (item.status !== "APPROVED") {
+    throw new Error(
+      "Głosowanie otwiera się po zatwierdzeniu punktu przez prowadzącego.",
+    );
   }
 
   // Prawo głosu: rola członka musi mieć włączone głosowanie oraz znajdować się na

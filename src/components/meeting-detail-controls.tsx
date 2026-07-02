@@ -15,14 +15,18 @@ import { Button } from "@/components/ui/button";
 type AgendaStatus = "PENDING" | "APPROVED" | "REJECTED";
 
 // Akcje decyzyjne dla punktu porządku obrad (tylko dla zarządzających).
+// Dla punktów-uchwał zatwierdzenie otwiera głosowanie członków (etykiety poniżej).
 export function AgendaDecideControls({
   itemId,
   status,
   ended,
+  isResolution,
 }: {
   itemId: string;
   status: AgendaStatus;
   ended: boolean;
+  // Punkt reprezentuje uchwałę — zatwierdzenie otwiera nad nim głosowanie.
+  isResolution?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -46,11 +50,18 @@ export function AgendaDecideControls({
           type="button"
           size="sm"
           disabled={pending}
-          onClick={() => decide("APPROVED", "Punkt zatwierdzony przez zebranie.")}
+          onClick={() =>
+            decide(
+              "APPROVED",
+              isResolution
+                ? "Punkt zatwierdzony — głosowanie otwarte."
+                : "Punkt zatwierdzony przez zebranie.",
+            )
+          }
           className="bg-emerald-600 text-white hover:bg-emerald-700"
         >
           <Check className="size-4" />
-          Zatwierdź punkt
+          {isResolution ? "Zatwierdź (otwórz głosowanie)" : "Zatwierdź punkt"}
         </Button>
         <Button
           type="button"
@@ -72,6 +83,8 @@ export function AgendaDecideControls({
   if (ended && status === "APPROVED") return null;
 
   // W pozostałych przypadkach zostaje możliwość cofnięcia; status widać na znaczniku.
+  // Dla zatwierdzonej uchwały cofnięcie zamyka trwające głosowanie.
+  const closesVoting = isResolution && status === "APPROVED";
   return (
     <div className="mt-4">
       <Button
@@ -79,11 +92,16 @@ export function AgendaDecideControls({
         size="sm"
         variant="ghost"
         disabled={pending}
-        onClick={() => decide("PENDING", "Cofnięto decyzję.")}
+        onClick={() =>
+          decide(
+            "PENDING",
+            closesVoting ? "Cofnięto — głosowanie zamknięte." : "Cofnięto decyzję.",
+          )
+        }
         className="h-7 gap-1 px-2 text-xs text-muted-foreground"
       >
         <RotateCcw className="size-3.5" />
-        Cofnij decyzję
+        {closesVoting ? "Cofnij (zamknij głosowanie)" : "Cofnij decyzję"}
       </Button>
     </div>
   );
