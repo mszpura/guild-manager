@@ -369,8 +369,8 @@ export async function deleteAgendaComment(commentId: string) {
 
 // ─── Głosowanie nad punktami porządku obrad ───────────────────────────────
 
-// Oddaje (lub zmienia/cofa) głos członka nad punktem. Wymaga prawa udziału.
-// Ponowny wybór tej samej opcji = wycofanie głosu.
+// Oddaje głos członka nad punktem (uchwałą). Głos jest ostateczny — po oddaniu
+// nie można go zmienić ani wycofać. Wymaga prawa udziału.
 export async function castVote(itemId: string, choice: VoteChoice) {
   const item = await prisma.agendaItem.findUnique({
     where: { id: itemId },
@@ -446,22 +446,17 @@ export async function castVote(itemId: string, choice: VoteChoice) {
     }
   }
 
+  // Głos jest ostateczny — po oddaniu nie można go zmienić ani wycofać.
   const existing = await prisma.agendaVote.findUnique({
     where: { agendaItemId_memberId: { agendaItemId: itemId, memberId: me.id } },
-    select: { choice: true },
+    select: { id: true },
   });
-
-  if (existing?.choice === choice) {
-    // Ten sam wybór ponownie → wycofanie głosu.
-    await prisma.agendaVote.delete({
-      where: { agendaItemId_memberId: { agendaItemId: itemId, memberId: me.id } },
-    });
-  } else {
-    await prisma.agendaVote.upsert({
-      where: { agendaItemId_memberId: { agendaItemId: itemId, memberId: me.id } },
-      create: { agendaItemId: itemId, memberId: me.id, choice },
-      update: { choice },
-    });
+  if (existing) {
+    throw new Error("Głos został już oddany — nie można go zmienić.");
   }
+
+  await prisma.agendaVote.create({
+    data: { agendaItemId: itemId, memberId: me.id, choice },
+  });
   revalidateMeeting(item.meetingId);
 }

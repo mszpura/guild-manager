@@ -7,6 +7,7 @@ import {
   RESOLUTION_STATUS_LABELS,
   RESOLUTION_STATUS_BADGE,
   tallyVotes,
+  voteOutcome,
 } from "@/lib/resolutions";
 import { ResolutionFormDialog } from "@/components/resolution-form-dialog";
 import { AddResolutionToMeeting } from "@/components/resolution-meeting-controls";
@@ -129,6 +130,9 @@ export default async function ResolutionDetailPage({
   const canDownloadPdf = isDecided;
   // Imienne głosy ujawniamy tylko przy głosowaniu jawnym.
   const showVoters = !resolution.secretBallot;
+  // Wyniki online ujawniamy dopiero po oddaniu głosu lub po rozstrzygnięciu —
+  // przed oddaniem głosu użytkownik nie powinien widzieć bieżącego wyniku.
+  const showOnlineResults = myChoice !== null || isDecided;
   // Typ wymagający głosowania na spotkaniu — głosowanie online na razie wyłączone.
   const requiresMeeting = resolution.resolutionType?.requiresMeeting ?? false;
   const meetingItem = resolution.agendaItem;
@@ -263,32 +267,75 @@ export default async function ResolutionDetailPage({
               jest wyłączone — uchwałę głosuje się jako punkt porządku obrad.
             </p>
 
-            {meetingItem ? (
-              <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
-                <p>
-                  Uchwała jest w porządku obrad spotkania:{" "}
-                  <Link
-                    href={`/meetings/${meetingItem.meeting.id}`}
-                    className="font-semibold text-primary hover:underline"
-                  >
-                    {meetingItem.meeting.title}
-                  </Link>{" "}
-                  <span className="text-muted-foreground">
-                    ({dateTimeFmt.format(meetingItem.meeting.startsAt)})
-                  </span>
-                  .
-                </p>
-                {(() => {
-                  const mt = tallyVotes(meetingItem.votes);
-                  return (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Głosy na spotkaniu — {mt.FOR} za, {mt.AGAINST} przeciw,{" "}
-                      {mt.ABSTAIN} wstrzymujących się.
+            {meetingItem ? (() => {
+              const meetingEnded = meetingItem.meeting.endedAt !== null;
+              const mt = tallyVotes(meetingItem.votes);
+              const link = (
+                <Link
+                  href={`/meetings/${meetingItem.meeting.id}`}
+                  className="font-semibold text-primary hover:underline"
+                >
+                  {meetingItem.meeting.title}
+                </Link>
+              );
+
+              // Głosowanie na spotkaniu trwa — wynik ujawniamy dopiero po zakończeniu.
+              if (!meetingEnded) {
+                return (
+                  <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+                    <p>
+                      Uchwała jest w porządku obrad spotkania: {link}{" "}
+                      <span className="text-muted-foreground">
+                        ({dateTimeFmt.format(meetingItem.meeting.startsAt)})
+                      </span>
+                      .
                     </p>
-                  );
-                })()}
-              </div>
-            ) : canAddToMeeting ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Wynik pojawi się po zakończeniu spotkania.
+                    </p>
+                  </div>
+                );
+              }
+
+              // Spotkanie zakończone i punkt poddano pod głosowanie — pokazujemy wynik
+              // wyznaczony z głosów oraz progu typu uchwały.
+              if (meetingItem.status === "APPROVED") {
+                const passed =
+                  voteOutcome(
+                    mt,
+                    resolution.resolutionType?.voteThreshold ?? null,
+                  ) === "PASSED";
+                return (
+                  <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+                    <p>Głosowano na spotkaniu: {link}.</p>
+                    <p className="mt-1">
+                      Wynik:{" "}
+                      <strong
+                        className={
+                          passed ? "text-emerald-700" : "text-destructive"
+                        }
+                      >
+                        {passed ? "Przyjęta" : "Odrzucona"}
+                      </strong>{" "}
+                      ({mt.FOR} za, {mt.AGAINST} przeciw, {mt.ABSTAIN}{" "}
+                      wstrzymujących się).
+                    </p>
+                  </div>
+                );
+              }
+
+              // Zakończone, ale punktu nie poddano pod głosowanie (lub odrzucono go).
+              return (
+                <div className="rounded-lg border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                  <p>
+                    {meetingItem.status === "REJECTED"
+                      ? "Punkt uchwały został odrzucony na spotkaniu — nie przeprowadzono głosowania"
+                      : "Uchwały nie poddano pod głosowanie na spotkaniu"}{" "}
+                    ({link}).
+                  </p>
+                </div>
+              );
+            })() : canAddToMeeting ? (
               <AddResolutionToMeeting
                 resolutionId={resolution.id}
                 meetings={upcomingMeetings.map((m) => ({
@@ -311,6 +358,7 @@ export default async function ResolutionDetailPage({
               myChoice={myChoice}
               canVote={isVoting && me.role.canVote}
               eligibleCount={eligibleCount}
+              showResults={showOnlineResults}
             />
             {isDecided ? (
               <p className="mt-4 text-sm">
@@ -332,7 +380,7 @@ export default async function ResolutionDetailPage({
             {/* imienne głosy — tylko przy głosowaniu jawnym */}
             {showVoters ? (
               <>
-                {resolution.votes.length > 0 ? (
+                {showOnlineResults && resolution.votes.length > 0 ? (
                   <div className="mt-5 border-t pt-4">
                     <p className="mb-2 text-[11px] font-bold tracking-wide text-muted-foreground">
                       ODDANE GŁOSY · {resolution.votes.length}

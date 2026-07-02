@@ -21,12 +21,15 @@ export function AgendaDecideControls({
   status,
   ended,
   isResolution,
+  hasVotes,
 }: {
   itemId: string;
   status: AgendaStatus;
   ended: boolean;
   // Punkt reprezentuje uchwałę — zatwierdzenie otwiera nad nim głosowanie.
   isResolution?: boolean;
+  // Czy oddano już jakiś głos — po pierwszym głosie nie można cofnąć/zamknąć.
+  hasVotes?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -85,6 +88,8 @@ export function AgendaDecideControls({
   // W pozostałych przypadkach zostaje możliwość cofnięcia; status widać na znaczniku.
   // Dla zatwierdzonej uchwały cofnięcie zamyka trwające głosowanie.
   const closesVoting = isResolution && status === "APPROVED";
+  // Po oddaniu pierwszego głosu nad uchwałą nie można już zamknąć/cofnąć głosowania.
+  if (closesVoting && hasVotes) return null;
   return (
     <div className="mt-4">
       <Button

@@ -389,6 +389,7 @@ export default async function MeetingDetailPage({
                           tally={tally}
                           myChoice={myChoice}
                           canVote={votingOpen && item.status === "APPROVED"}
+                          showResults={ended || myChoice !== null}
                           note={
                             ended
                               ? undefined
@@ -413,6 +414,7 @@ export default async function MeetingDetailPage({
                           status={item.status}
                           ended={ended}
                           isResolution={item.resolutionId !== null}
+                          hasVotes={item.votes.length > 0}
                         />
                       ) : null}
 

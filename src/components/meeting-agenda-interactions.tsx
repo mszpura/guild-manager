@@ -47,16 +47,22 @@ export function AgendaVote({
   tally,
   myChoice,
   canVote,
+  showResults,
   note,
 }: {
   itemId: string;
   tally: { FOR: number; AGAINST: number; ABSTAIN: number };
   myChoice: Choice | null;
   canVote: boolean;
+  // Czy ujawniać wyniki. Przed oddaniem głosu (gdy głosowanie trwa) są ukryte.
+  showResults: boolean;
   note?: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+
+  // Głos jest ostateczny — po oddaniu nie można głosować ponownie.
+  const canInteract = canVote && myChoice === null;
 
   function vote(choice: Choice) {
     start(async () => {
@@ -77,14 +83,14 @@ export function AgendaVote({
           const content = (
             <>
               <div className={`font-heading text-lg font-extrabold leading-none ${b.text}`}>
-                {tally[b.choice]}
+                {showResults ? tally[b.choice] : "?"}
               </div>
               <div className="mt-1 text-[10px] font-semibold tracking-wide text-muted-foreground">
                 {b.label}
               </div>
             </>
           );
-          return canVote ? (
+          return canInteract ? (
             <button
               key={b.choice}
               type="button"
@@ -100,7 +106,9 @@ export function AgendaVote({
           ) : (
             <div
               key={b.choice}
-              className={`flex-1 rounded-lg border py-2 text-center ${b.idle}`}
+              className={`flex-1 rounded-lg border py-2 text-center ${
+                active ? b.active : b.idle
+              }`}
             >
               {content}
             </div>
@@ -109,10 +117,13 @@ export function AgendaVote({
       </div>
       {note ? (
         <p className="mt-1.5 text-[11px] font-medium text-amber-600">{note}</p>
-      ) : canVote ? (
+      ) : canInteract ? (
         <p className="mt-1.5 text-[11px] text-muted-foreground">
-          Kliknij, aby oddać głos
-          {myChoice ? " (ponowny wybór wycofuje głos)" : ""}.
+          Kliknij, aby oddać głos. Głosu nie można później zmienić ani wycofać.
+        </p>
+      ) : myChoice ? (
+        <p className="mt-1.5 text-[11px] text-muted-foreground">
+          Twój głos został zapisany (ostateczny).
         </p>
       ) : null}
     </div>

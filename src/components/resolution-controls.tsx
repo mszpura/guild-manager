@@ -59,6 +59,7 @@ export function ResolutionVoteButtons({
   myChoice,
   canVote,
   eligibleCount,
+  showResults,
 }: {
   resolutionId: string;
   tally: { FOR: number; AGAINST: number; ABSTAIN: number };
@@ -66,9 +67,14 @@ export function ResolutionVoteButtons({
   canVote: boolean;
   // Liczba uprawnionych do głosowania (członkowie z dostępem WRITE do Uchwał).
   eligibleCount: number;
+  // Czy ujawniać wyniki (liczby/pasek). Przed oddaniem głosu wyniki są ukryte.
+  showResults: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+
+  // Głos jest ostateczny — po oddaniu nie można głosować ponownie.
+  const canInteract = canVote && myChoice === null;
 
   function vote(choice: Choice) {
     start(async () => {
@@ -93,29 +99,31 @@ export function ResolutionVoteButtons({
     <div>
       {barTotal > 0 ? (
         <div className="mb-3 space-y-1.5">
-          <div className="flex h-2.5 overflow-hidden rounded-full bg-muted">
-            {tally.FOR > 0 ? (
-              <div
-                className="bg-emerald-500"
-                style={{ width: `${pct(tally.FOR)}%` }}
-                title={`Za: ${tally.FOR}`}
-              />
-            ) : null}
-            {tally.AGAINST > 0 ? (
-              <div
-                className="bg-red-500"
-                style={{ width: `${pct(tally.AGAINST)}%` }}
-                title={`Przeciw: ${tally.AGAINST}`}
-              />
-            ) : null}
-            {tally.ABSTAIN > 0 ? (
-              <div
-                className="bg-slate-400"
-                style={{ width: `${pct(tally.ABSTAIN)}%` }}
-                title={`Wstrzymujące się: ${tally.ABSTAIN}`}
-              />
-            ) : null}
-          </div>
+          {showResults ? (
+            <div className="flex h-2.5 overflow-hidden rounded-full bg-muted">
+              {tally.FOR > 0 ? (
+                <div
+                  className="bg-emerald-500"
+                  style={{ width: `${pct(tally.FOR)}%` }}
+                  title={`Za: ${tally.FOR}`}
+                />
+              ) : null}
+              {tally.AGAINST > 0 ? (
+                <div
+                  className="bg-red-500"
+                  style={{ width: `${pct(tally.AGAINST)}%` }}
+                  title={`Przeciw: ${tally.AGAINST}`}
+                />
+              ) : null}
+              {tally.ABSTAIN > 0 ? (
+                <div
+                  className="bg-slate-400"
+                  style={{ width: `${pct(tally.ABSTAIN)}%` }}
+                  title={`Wstrzymujące się: ${tally.ABSTAIN}`}
+                />
+              ) : null}
+            </div>
+          ) : null}
           <p className="text-[11px] text-muted-foreground">
             {notVoted > 0
               ? `Jeszcze nie zagłosowało: ${notVoted} z ${eligibleCount}`
@@ -130,14 +138,14 @@ export function ResolutionVoteButtons({
           const content = (
             <>
               <div className={`font-heading text-xl font-extrabold leading-none ${b.text}`}>
-                {tally[b.choice]}
+                {showResults ? tally[b.choice] : "?"}
               </div>
               <div className="mt-1 text-[10px] font-semibold tracking-wide text-muted-foreground">
                 {b.label}
               </div>
             </>
           );
-          return canVote ? (
+          return canInteract ? (
             <button
               key={b.choice}
               type="button"
@@ -153,17 +161,22 @@ export function ResolutionVoteButtons({
           ) : (
             <div
               key={b.choice}
-              className={`flex-1 rounded-lg border py-3 text-center ${b.idle}`}
+              className={`flex-1 rounded-lg border py-3 text-center ${
+                active ? b.active : b.idle
+              }`}
             >
               {content}
             </div>
           );
         })}
       </div>
-      {canVote ? (
+      {canInteract ? (
         <p className="mt-2 text-[11px] text-muted-foreground">
-          Kliknij, aby oddać głos
-          {myChoice ? " (ponowny wybór wycofuje głos)" : ""}.
+          Kliknij, aby oddać głos. Głosu nie można później zmienić ani wycofać.
+        </p>
+      ) : myChoice ? (
+        <p className="mt-2 text-[11px] text-muted-foreground">
+          Twój głos został zapisany (ostateczny).
         </p>
       ) : null}
     </div>

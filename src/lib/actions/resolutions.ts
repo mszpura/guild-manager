@@ -240,8 +240,8 @@ export async function reopenResolutionDraft(resolutionId: string) {
   revalidateResolution(resolutionId);
 }
 
-// Oddaje (lub zmienia/cofa) głos członka nad uchwałą w trakcie głosowania.
-// Ponowny wybór tej samej opcji = wycofanie głosu. Wymaga RESOLUTIONS READ.
+// Oddaje głos członka nad uchwałą w trakcie głosowania. Głos jest ostateczny —
+// po oddaniu nie można go zmienić ani wycofać. Wymaga RESOLUTIONS READ.
 export async function castResolutionVote(
   resolutionId: string,
   choice: VoteChoice,
@@ -273,22 +273,18 @@ export async function castResolutionVote(
     throw new Error("Głosowanie nad tą uchwałą nie jest otwarte.");
   }
 
+  // Głos jest ostateczny — po oddaniu nie można go zmienić ani wycofać.
   const existing = await prisma.resolutionVote.findUnique({
     where: { resolutionId_memberId: { resolutionId, memberId: me.id } },
-    select: { choice: true },
+    select: { id: true },
   });
-
-  if (existing?.choice === choice) {
-    await prisma.resolutionVote.delete({
-      where: { resolutionId_memberId: { resolutionId, memberId: me.id } },
-    });
-  } else {
-    await prisma.resolutionVote.upsert({
-      where: { resolutionId_memberId: { resolutionId, memberId: me.id } },
-      create: { resolutionId, memberId: me.id, choice },
-      update: { choice },
-    });
+  if (existing) {
+    throw new Error("Głos został już oddany — nie można go zmienić.");
   }
+
+  await prisma.resolutionVote.create({
+    data: { resolutionId, memberId: me.id, choice },
+  });
   revalidateResolution(resolutionId);
 }
 
